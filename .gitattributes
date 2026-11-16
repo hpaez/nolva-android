@@ -1,0 +1,8 @@
+# Normalize line endings: edited on Windows, built on Linux runners.
+* text=auto eol=lf
+*.bat text eol=crlf
+gradlew text eol=lf
+*.jar binary
+*.png binary
+*.webp binary
+*.jpg binary
