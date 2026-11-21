@@ -150,6 +150,27 @@ class DocumentListViewModelTest {
     }
 
     @Test
+    fun `search ignores case and accents and keeps the full list`() = runTest(dispatcher) {
+        val repository = FakeRepository().apply {
+            documents += listOf(document("a", "Factura Única"), document("b", "Contrato"), document("c", "facturación"))
+        }
+        val viewModel = viewModel(repository)
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        viewModel.search("  FACTURA ")
+        val state = viewModel.uiState.value
+        assertEquals(listOf("Factura Única", "facturación"), state.visibleDocuments.map { it.title })
+        assertEquals(3, state.documents.size)
+
+        viewModel.search("unica")
+        assertEquals(listOf("Factura Única"), viewModel.uiState.value.visibleDocuments.map { it.title })
+
+        viewModel.search("")
+        assertEquals(3, viewModel.uiState.value.visibleDocuments.size)
+    }
+
+    @Test
     fun `loads documents on refresh`() = runTest(dispatcher) {
         val repository = FakeRepository().apply { documents += document("a", "Lease") }
 

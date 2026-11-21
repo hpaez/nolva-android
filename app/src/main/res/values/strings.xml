@@ -14,6 +14,11 @@
         <item quantity="other">%d pages</item>
     </plurals>
 
+    <string name="search_documents">Search documents</string>
+    <string name="clear_search">Clear search</string>
+    <!-- %1$s: what the user searched for -->
+    <string name="no_search_results">No documents match “%1$s”.</string>
+
     <!-- Create document dialog -->
     <string name="document_title_label">Title</string>
     <!-- %1$s: today's date -->

@@ -99,6 +99,7 @@ private fun DocumentInfo.toDocument() = Document(
     createdAt = Instant.ofEpochMilli(createdAtMs),
     updatedAt = Instant.ofEpochMilli(updatedAtMs),
     pageCount = pageCount.toInt(),
+    coverFile = coverPath?.let(::File),
 )
 
 private fun PageInfo.toPage() = Page(
