@@ -132,6 +132,7 @@ fun NolvaNavigation(container: AppContainer, modifier: Modifier = Modifier) {
                                     repository = container.documentRepository,
                                     cropper = container.pageCropper,
                                     editor = container.documentEditor,
+                                    detector = container.sheetDetector,
                                     captureDir = container.captureDir,
                                     ioDispatcher = Dispatchers.IO,
                                 )

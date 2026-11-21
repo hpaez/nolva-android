@@ -5,11 +5,13 @@ import app.nolva.core.CoreConfig
 import app.nolva.core.NolvaCore
 import app.nolva.data.ContentPageImporter
 import app.nolva.data.CoreDocumentRepository
+import app.nolva.data.CoreSheetDetector
 import app.nolva.data.DocumentEditor
 import app.nolva.data.DocumentRepository
 import app.nolva.data.PageCropper
 import app.nolva.data.PageImporter
 import app.nolva.data.PdfExporter
+import app.nolva.data.SheetDetector
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -47,6 +49,9 @@ class AppContainer(context: Context) {
             ioDispatcher = Dispatchers.IO,
         )
     }
+
+    /** Live sheet detection for the camera guide; stateless, so shared. */
+    val sheetDetector: SheetDetector = CoreSheetDetector()
 
     /** Scratch space for camera captures before the core imports them. */
     val captureDir: File get() = File(appContext.cacheDir, "captures")

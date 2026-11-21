@@ -5,8 +5,10 @@ import androidx.lifecycle.viewModelScope
 import app.nolva.data.DocumentEditor
 import app.nolva.data.DocumentException
 import app.nolva.data.DocumentRepository
+import app.nolva.data.LumaFrame
 import app.nolva.data.Page
 import app.nolva.data.PageCropper
+import app.nolva.data.SheetDetector
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
@@ -25,12 +27,20 @@ data class CaptureUiState(
     /** Captures taken but not yet stored by the core. */
     val pendingSaves: Int = 0,
     val message: CaptureMessage? = null,
+    /** Live outline of the sheet in front of the camera, if any. */
+    val guide: LiveGuide? = null,
+    val autoCapture: Boolean = true,
+    val flash: FlashMode = FlashMode.Auto,
+    /** Set when the sheet has been held still: the screen should take a photo. */
+    val autoShutter: Boolean = false,
 ) {
     val isSaving: Boolean get() = pendingSaves > 0
     val capturedCount: Int get() = captured.size
 }
 
 enum class CaptureMessage { CaptureFailed, SaveFailed, DiscardFailed }
+
+enum class FlashMode { Off, Auto, On }
 
 /** Minimum detection confidence to crop automatically after a capture. */
 internal const val AUTO_CROP_MIN_CONFIDENCE = 0.6f
@@ -52,12 +62,46 @@ class CaptureViewModel(
     private val repository: DocumentRepository,
     private val cropper: PageCropper,
     private val editor: DocumentEditor,
+    private val detector: SheetDetector,
     private val captureDir: File,
     private val ioDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CaptureUiState())
     val uiState: StateFlow<CaptureUiState> = _uiState.asStateFlow()
+
+    /** Only touched from the camera's single analysis thread. */
+    private val tracker = AutoCaptureTracker()
+
+    /**
+     * Runs live detection on a sampled preview frame and updates the guide.
+     * Called on the camera's analysis thread: detection blocks for a few
+     * milliseconds and must stay off the main thread.
+     */
+    fun analyzeFrame(frame: LumaFrame, nowMs: Long) {
+        val detection = try {
+            detector.detect(frame)
+        } catch (e: Exception) {
+            null
+        }
+        val result = tracker.onFrame(detection, frame.uprightAspect, nowMs, _uiState.value.autoCapture)
+        _uiState.update { it.copy(guide = result.guide, autoShutter = it.autoShutter || result.capture) }
+    }
+
+    fun autoShutterHandled() {
+        _uiState.update { it.copy(autoShutter = false) }
+    }
+
+    fun toggleAutoCapture() {
+        _uiState.update { it.copy(autoCapture = !it.autoCapture, autoShutter = false) }
+    }
+
+    fun cycleFlash() {
+        _uiState.update { state ->
+            val next = FlashMode.entries[(state.flash.ordinal + 1) % FlashMode.entries.size]
+            state.copy(flash = next)
+        }
+    }
 
     /** A fresh temp file for the next capture. Call off the main thread. */
     fun newCaptureFile(): File {

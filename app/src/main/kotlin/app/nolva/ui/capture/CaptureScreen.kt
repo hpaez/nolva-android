@@ -5,16 +5,24 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
+import android.util.Size
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.compose.CameraXViewfinder
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.core.SurfaceRequest
+import androidx.camera.core.resolutionselector.AspectRatioStrategy
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.lifecycle.awaitInstance
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -47,6 +55,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,9 +66,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -69,9 +83,11 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.nolva.R
+import app.nolva.data.LumaFrame
 import app.nolva.data.Page
 import coil3.compose.AsyncImage
 import java.io.File
+import java.util.concurrent.Executors
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.Dispatchers
@@ -111,31 +127,58 @@ fun CaptureRoute(
         ImageCapture.Builder()
             // Documents are static: favour detail (for OCR later) over speed.
             .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+            // Same 4:3 as the preview and analysis, so the live guide's
+            // coordinates line up with what is on screen and in the photo.
+            .setResolutionSelector(FOUR_BY_THREE)
             .build()
     }
+    LaunchedEffect(uiState.flash) { imageCapture.flashMode = uiState.flash.toCameraX() }
     var isCapturing by remember { mutableStateOf(false) }
+    var hasFlash by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val haptics = LocalHapticFeedback.current
+
+    fun takePicture() {
+        if (isCapturing) return
+        isCapturing = true
+        scope.launch {
+            val file = withContext(Dispatchers.IO) { viewModel.newCaptureFile() }
+            try {
+                imageCapture.takePictureTo(file)
+                viewModel.onPictureTaken(file)
+            } catch (e: ImageCaptureException) {
+                viewModel.onCaptureFailed(file)
+            } finally {
+                isCapturing = false
+            }
+        }
+    }
+
+    LaunchedEffect(uiState.autoShutter) {
+        if (uiState.autoShutter) {
+            viewModel.autoShutterHandled()
+            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            takePicture()
+        }
+    }
 
     CaptureScreen(
         uiState = uiState,
         hasPermission = hasPermission,
         permissionDenied = permissionDenied,
         isCapturing = isCapturing,
-        cameraContent = { CameraPreview(imageCapture, Modifier.fillMaxSize()) },
-        onShutter = {
-            isCapturing = true
-            scope.launch {
-                val file = withContext(Dispatchers.IO) { viewModel.newCaptureFile() }
-                try {
-                    imageCapture.takePictureTo(file)
-                    viewModel.onPictureTaken(file)
-                } catch (e: ImageCaptureException) {
-                    viewModel.onCaptureFailed(file)
-                } finally {
-                    isCapturing = false
-                }
-            }
+        hasFlash = hasFlash,
+        cameraContent = {
+            CameraPreview(
+                imageCapture = imageCapture,
+                onFrame = viewModel::analyzeFrame,
+                onCameraReady = { camera -> hasFlash = camera.cameraInfo.hasFlashUnit() },
+                modifier = Modifier.fillMaxSize(),
+            )
         },
+        onShutter = { takePicture() },
+        onToggleAutoCapture = viewModel::toggleAutoCapture,
+        onCycleFlash = viewModel::cycleFlash,
         onRequestPermission = { requestPermission.launch(Manifest.permission.CAMERA) },
         onOpenSettings = {
             context.startActivity(
@@ -155,8 +198,11 @@ private fun CaptureScreen(
     hasPermission: Boolean,
     permissionDenied: Boolean,
     isCapturing: Boolean,
+    hasFlash: Boolean,
     cameraContent: @Composable () -> Unit,
     onShutter: () -> Unit,
+    onToggleAutoCapture: () -> Unit,
+    onCycleFlash: () -> Unit,
     onRequestPermission: () -> Unit,
     onOpenSettings: () -> Unit,
     onDone: () -> Unit,
@@ -180,7 +226,10 @@ private fun CaptureScreen(
             .background(Color.Black),
     ) {
         when {
-            hasPermission -> cameraContent()
+            hasPermission -> {
+                cameraContent()
+                GuideOverlay(uiState.guide, Modifier.fillMaxSize())
+            }
             permissionDenied -> PermissionDenied(onRequestPermission, onOpenSettings)
         }
 
@@ -195,6 +244,44 @@ private fun CaptureScreen(
         }
 
         if (hasPermission) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .statusBarsPadding()
+                    .padding(8.dp)
+                    .align(Alignment.TopEnd),
+            ) {
+                if (hasFlash) {
+                    TextButton(onClick = onCycleFlash) {
+                        Text(stringResource(uiState.flash.labelRes()), color = Color.White)
+                    }
+                }
+                TextButton(onClick = onToggleAutoCapture) {
+                    Text(
+                        stringResource(if (uiState.autoCapture) R.string.auto_capture_on else R.string.auto_capture_off),
+                        color = Color.White,
+                    )
+                }
+            }
+
+            Text(
+                text = stringResource(
+                    when {
+                        uiState.guide == null -> R.string.capture_hint_find
+                        uiState.autoCapture && uiState.guide.steadiness > 0f -> R.string.capture_hint_hold
+                        else -> R.string.capture_hint_found
+                    },
+                ),
+                color = Color.White,
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier
+                    .statusBarsPadding()
+                    .padding(top = 64.dp)
+                    .align(Alignment.TopCenter)
+                    .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            )
+
             CaptureControls(
                 captured = uiState.captured,
                 onReview = { reviewingId = it.id },
@@ -351,29 +438,130 @@ private fun PermissionDenied(onRequestPermission: () -> Unit, onOpenSettings: ()
     }
 }
 
-/** Live back-camera preview bound to the current lifecycle, sharing [imageCapture]. */
+/** 4:3, the sensor's native shape, for every use case so their coordinates agree. */
+private val FOUR_BY_THREE: ResolutionSelector = ResolutionSelector.Builder()
+    .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
+    .build()
+
+/** Small frames are plenty for finding the sheet and keep analysis cheap. */
+private val ANALYSIS_RESOLUTION: ResolutionSelector = ResolutionSelector.Builder()
+    .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
+    .setResolutionStrategy(
+        ResolutionStrategy(Size(640, 480), ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER),
+    )
+    .build()
+
+/** At most this often a frame is analysed (about 8 per second). */
+private const val ANALYSIS_INTERVAL_MS = 120L
+
+/**
+ * Live back-camera preview bound to the current lifecycle, sharing
+ * [imageCapture], with sampled frames sent to [onFrame] on a background
+ * thread.
+ */
 @Composable
-private fun CameraPreview(imageCapture: ImageCapture, modifier: Modifier = Modifier) {
+private fun CameraPreview(
+    imageCapture: ImageCapture,
+    onFrame: (LumaFrame, nowMs: Long) -> Unit,
+    onCameraReady: (Camera) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var surfaceRequest by remember { mutableStateOf<SurfaceRequest?>(null) }
+    val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
+    DisposableEffect(analysisExecutor) { onDispose { analysisExecutor.shutdown() } }
 
     LaunchedEffect(lifecycleOwner, imageCapture) {
         val provider = ProcessCameraProvider.awaitInstance(context)
-        val preview = Preview.Builder().build().apply {
+        val preview = Preview.Builder().setResolutionSelector(FOUR_BY_THREE).build().apply {
             setSurfaceProvider { request -> surfaceRequest = request }
         }
-        provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageCapture)
+        val analysis = ImageAnalysis.Builder()
+            .setResolutionSelector(ANALYSIS_RESOLUTION)
+            // Drop frames that arrive while one is being analysed.
+            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+            .build()
+        var lastAnalysis = 0L
+        analysis.setAnalyzer(analysisExecutor) { image ->
+            image.use {
+                val now = System.currentTimeMillis()
+                if (now - lastAnalysis >= ANALYSIS_INTERVAL_MS) {
+                    lastAnalysis = now
+                    onFrame(it.toLumaFrame(), now)
+                }
+            }
+        }
+        val camera = provider.bindToLifecycle(
+            lifecycleOwner,
+            CameraSelector.DEFAULT_BACK_CAMERA,
+            preview,
+            imageCapture,
+            analysis,
+        )
+        onCameraReady(camera)
         try {
             awaitCancellation()
         } finally {
-            provider.unbind(preview, imageCapture)
+            analysis.clearAnalyzer()
+            provider.unbind(preview, imageCapture, analysis)
         }
     }
 
     surfaceRequest?.let { request ->
         CameraXViewfinder(surfaceRequest = request, modifier = modifier)
     }
+}
+
+/** Copies the frame's luminance plane; the buffer is only valid until the image is closed. */
+private fun ImageProxy.toLumaFrame(): LumaFrame {
+    val plane = planes[0]
+    val buffer = plane.buffer.duplicate().apply { rewind() }
+    val luma = ByteArray(buffer.remaining()).also { buffer.get(it) }
+    return LumaFrame(width, height, plane.rowStride, luma, imageInfo.rotationDegrees)
+}
+
+/**
+ * The sheet's outline over the preview. The viewfinder fills the screen and
+ * crops the 4:3 frame (like ContentScale.Crop), so the normalized corners
+ * are mapped through the same crop. The outline fills in as the sheet is
+ * held still for an automatic capture.
+ */
+@Composable
+private fun GuideOverlay(guide: LiveGuide?, modifier: Modifier = Modifier) {
+    val color = MaterialTheme.colorScheme.primary
+    Canvas(modifier) {
+        val g = guide ?: return@Canvas
+        val boxAspect = size.width / size.height
+        val (contentW, contentH) = if (boxAspect > g.frameAspect) {
+            size.width to size.width / g.frameAspect
+        } else {
+            size.height * g.frameAspect to size.height
+        }
+        val left = (size.width - contentW) / 2f
+        val top = (size.height - contentH) / 2f
+        val points = with(g.corners) { listOf(topLeft, topRight, bottomRight, bottomLeft) }
+            .map { Offset(left + it.x * contentW, top + it.y * contentH) }
+        val path = Path().apply {
+            moveTo(points[0].x, points[0].y)
+            points.drop(1).forEach { lineTo(it.x, it.y) }
+            close()
+        }
+        drawPath(path, color.copy(alpha = 0.12f + 0.38f * g.steadiness))
+        drawPath(path, color, style = Stroke(width = 3.dp.toPx()))
+    }
+}
+
+private fun FlashMode.toCameraX(): Int = when (this) {
+    FlashMode.Off -> ImageCapture.FLASH_MODE_OFF
+    FlashMode.Auto -> ImageCapture.FLASH_MODE_AUTO
+    FlashMode.On -> ImageCapture.FLASH_MODE_ON
+}
+
+private fun FlashMode.labelRes(): Int = when (this) {
+    FlashMode.Off -> R.string.flash_off
+    FlashMode.Auto -> R.string.flash_auto
+    FlashMode.On -> R.string.flash_on
 }
 
 /** Takes a JPEG into [file], suspending until it is fully written. */

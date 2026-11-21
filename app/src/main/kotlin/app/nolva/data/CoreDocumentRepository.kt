@@ -134,11 +134,11 @@ private fun PaperSize.toCore() = when (this) {
     PaperSize.FitImage -> CorePaperSize.FIT_IMAGE
 }
 
-private fun CorePoint.toPoint() = NormalizedPoint(x, y)
+internal fun CorePoint.toPoint() = NormalizedPoint(x, y)
 
 private fun NormalizedPoint.toCorePoint() = CorePoint(x, y)
 
-private fun PageCorners.toCorners() = Corners(
+internal fun PageCorners.toCorners() = Corners(
     topLeft = topLeft.toPoint(),
     topRight = topRight.toPoint(),
     bottomRight = bottomRight.toPoint(),

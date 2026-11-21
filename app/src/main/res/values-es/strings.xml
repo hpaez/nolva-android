@@ -94,4 +94,12 @@
     <string name="review_last_page">Revisar la última página</string>
     <string name="keep">Conservar</string>
     <string name="discard">Descartar</string>
+    <string name="flash_off">Flash apagado</string>
+    <string name="flash_auto">Flash automático</string>
+    <string name="flash_on">Flash encendido</string>
+    <string name="auto_capture_on">Auto: sí</string>
+    <string name="auto_capture_off">Auto: no</string>
+    <string name="capture_hint_find">Apunta a un documento</string>
+    <string name="capture_hint_found">Documento detectado</string>
+    <string name="capture_hint_hold">Mantén quieto…</string>
 </resources>
