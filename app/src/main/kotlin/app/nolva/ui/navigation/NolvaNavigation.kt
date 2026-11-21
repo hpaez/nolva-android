@@ -18,6 +18,8 @@ import app.nolva.ui.document.DocumentDetailRoute
 import app.nolva.ui.document.DocumentDetailViewModel
 import app.nolva.ui.documents.DocumentListRoute
 import app.nolva.ui.documents.DocumentListViewModel
+import app.nolva.ui.viewer.PageViewerRoute
+import app.nolva.ui.viewer.PageViewerViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.Serializable
 
@@ -30,6 +32,9 @@ data class DocumentDetailKey(val documentId: String, val title: String) : NavKey
 
 @Serializable
 data class CaptureKey(val documentId: String) : NavKey
+
+@Serializable
+data class PageViewerKey(val documentId: String, val initialPage: Int) : NavKey
 
 @Composable
 fun NolvaNavigation(container: AppContainer, modifier: Modifier = Modifier) {
@@ -74,6 +79,18 @@ fun NolvaNavigation(container: AppContainer, modifier: Modifier = Modifier) {
                     title = key.title,
                     onBack = { backStack.removeLastOrNull() },
                     onScan = { backStack.add(CaptureKey(key.documentId)) },
+                    onOpenPage = { index -> backStack.add(PageViewerKey(key.documentId, index)) },
+                )
+            }
+            entry<PageViewerKey> { key ->
+                PageViewerRoute(
+                    viewModel = viewModel(
+                        factory = viewModelFactory {
+                            initializer { PageViewerViewModel(key.documentId, container.documentRepository) }
+                        },
+                    ),
+                    initialPage = key.initialPage,
+                    onClose = { backStack.removeLastOrNull() },
                 )
             }
             entry<CaptureKey> { key ->

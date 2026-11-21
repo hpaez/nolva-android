@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
@@ -60,6 +60,7 @@ fun DocumentDetailRoute(
     title: String,
     onBack: () -> Unit,
     onScan: () -> Unit,
+    onOpenPage: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -74,6 +75,7 @@ fun DocumentDetailRoute(
         uiState = uiState,
         onBack = onBack,
         onScan = onScan,
+        onOpenPage = onOpenPage,
         onAddFromGallery = {
             pickImages.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
         },
@@ -92,6 +94,7 @@ fun DocumentDetailScreen(
     onAddFromGallery: () -> Unit,
     onMessageShown: () -> Unit,
     modifier: Modifier = Modifier,
+    onOpenPage: (Int) -> Unit = {},
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val messageText = uiState.message?.let { stringResource(it.textRes()) }
@@ -147,13 +150,13 @@ fun DocumentDetailScreen(
 
             uiState.pages.isEmpty() && !uiState.isImporting -> EmptyPages(Modifier.padding(innerPadding))
 
-            else -> PageGrid(pages = uiState.pages, contentPadding = innerPadding)
+            else -> PageGrid(pages = uiState.pages, contentPadding = innerPadding, onOpenPage = onOpenPage)
         }
     }
 }
 
 @Composable
-private fun PageGrid(pages: List<Page>, contentPadding: PaddingValues) {
+private fun PageGrid(pages: List<Page>, contentPadding: PaddingValues, onOpenPage: (Int) -> Unit) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 140.dp),
         modifier = Modifier.fillMaxSize(),
@@ -166,15 +169,17 @@ private fun PageGrid(pages: List<Page>, contentPadding: PaddingValues) {
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        items(pages, key = { it.id }) { page -> PageThumbnail(page) }
+        itemsIndexed(pages, key = { _, page -> page.id }) { index, page ->
+            PageThumbnail(page, onClick = { onOpenPage(index) })
+        }
     }
 }
 
 @Composable
-private fun PageThumbnail(page: Page) {
+private fun PageThumbnail(page: Page, onClick: () -> Unit) {
     val pageNumber = page.position + 1
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+        OutlinedCard(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
             // Coil downsamples to the displayed size, so full-resolution
             // originals never get decoded into memory here.
             AsyncImage(

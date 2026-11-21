@@ -27,6 +27,8 @@
     <string name="gallery">Gallery</string>
     <string name="no_pages_title">No pages yet</string>
     <string name="no_pages_body">Scan pages with the camera or add them from your gallery.</string>
+    <!-- %1$d: current page, %2$d: total pages -->
+    <string name="page_counter" translatable="false">%1$d / %2$d</string>
     <!-- %1$d: 1-based page number -->
     <string name="page_number">Page %1$d</string>
 
