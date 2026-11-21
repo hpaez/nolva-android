@@ -142,7 +142,7 @@ private fun ZoomablePage(page: Page, onZoomChanged: (Boolean) -> Unit) {
     }
 
     AsyncImage(
-        model = page.originalFile,
+        model = page.displayFile,
         contentDescription = stringResource(R.string.page_number, page.position + 1),
         contentScale = ContentScale.Fit,
         modifier = Modifier

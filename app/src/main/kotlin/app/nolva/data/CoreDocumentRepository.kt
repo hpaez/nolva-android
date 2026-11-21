@@ -3,14 +3,16 @@ package app.nolva.data
 import app.nolva.core.DocumentInfo
 import app.nolva.core.NolvaCoreInterface
 import app.nolva.core.NolvaException
+import app.nolva.core.PageCorners
 import app.nolva.core.PageInfo
+import app.nolva.core.NormalizedPoint as CorePoint
 import java.io.File
 import java.time.Instant
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 
 /**
- * [DocumentRepository] backed by the Rust core.
+ * [DocumentRepository] and [PageCropper] backed by the Rust core.
  *
  * Core calls are synchronous and may block on disk I/O, so every call runs on
  * [ioDispatcher]. The core itself is created lazily on that dispatcher too:
@@ -20,7 +22,7 @@ import kotlinx.coroutines.withContext
 class CoreDocumentRepository(
     private val ioDispatcher: CoroutineDispatcher,
     coreFactory: () -> NolvaCoreInterface,
-) : DocumentRepository {
+) : DocumentRepository, PageCropper {
 
     private val core by lazy(coreFactory)
 
@@ -38,6 +40,18 @@ class CoreDocumentRepository(
 
     override suspend fun listPages(documentId: String): List<Page> = call {
         core.listPages(documentId).map { it.toPage() }
+    }
+
+    override suspend fun getPage(pageId: String): Page = call {
+        core.getPage(pageId).toPage()
+    }
+
+    override suspend fun detectCorners(pageId: String): CornerDetection? = call {
+        core.detectPageCorners(pageId)?.let { CornerDetection(it.corners.toCorners(), it.confidence) }
+    }
+
+    override suspend fun cropPage(pageId: String, corners: Corners): Page = call {
+        core.cropPage(pageId, corners.toPageCorners()).toPage()
     }
 
     private suspend fun <T> call(block: () -> T): T = withContext(ioDispatcher) {
@@ -63,6 +77,26 @@ private fun PageInfo.toPage() = Page(
     position = position.toInt(),
     originalFile = File(originalPath),
     createdAt = Instant.ofEpochMilli(createdAtMs),
+    processedFile = processedPath?.let(::File),
+    corners = corners?.toCorners(),
+)
+
+private fun CorePoint.toPoint() = NormalizedPoint(x, y)
+
+private fun NormalizedPoint.toCorePoint() = CorePoint(x, y)
+
+private fun PageCorners.toCorners() = Corners(
+    topLeft = topLeft.toPoint(),
+    topRight = topRight.toPoint(),
+    bottomRight = bottomRight.toPoint(),
+    bottomLeft = bottomLeft.toPoint(),
+)
+
+private fun Corners.toPageCorners() = PageCorners(
+    topLeft = topLeft.toCorePoint(),
+    topRight = topRight.toCorePoint(),
+    bottomRight = bottomRight.toCorePoint(),
+    bottomLeft = bottomLeft.toCorePoint(),
 )
 
 private fun NolvaException.toDocumentException(): DocumentException = when (this) {

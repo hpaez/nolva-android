@@ -6,6 +6,7 @@ import app.nolva.core.NolvaCore
 import app.nolva.data.ContentPageImporter
 import app.nolva.data.CoreDocumentRepository
 import app.nolva.data.DocumentRepository
+import app.nolva.data.PageCropper
 import app.nolva.data.PageImporter
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -19,11 +20,15 @@ class AppContainer(context: Context) {
 
     private val appContext = context.applicationContext
 
-    val documentRepository: DocumentRepository by lazy {
+    private val coreRepository: CoreDocumentRepository by lazy {
         CoreDocumentRepository(ioDispatcher = Dispatchers.IO) {
             NolvaCore(CoreConfig(dataDir = File(appContext.filesDir, "nolva").absolutePath))
         }
     }
+
+    val documentRepository: DocumentRepository get() = coreRepository
+
+    val pageCropper: PageCropper get() = coreRepository
 
     val pageImporter: PageImporter by lazy {
         ContentPageImporter(
