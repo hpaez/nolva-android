@@ -3,6 +3,7 @@ package app.nolva.ui.capture
 import app.nolva.data.CornerDetection
 import app.nolva.data.Corners
 import app.nolva.data.Document
+import app.nolva.data.DocumentEditor
 import app.nolva.data.DocumentException
 import app.nolva.data.DocumentRepository
 import app.nolva.data.Page
@@ -72,8 +73,66 @@ class CaptureViewModelTest {
         override suspend fun applyFilter(pageId: String, filter: PageFilter): Page = error("unused")
     }
 
-    private fun viewModel(repository: DocumentRepository, cropper: PageCropper = FakeCropper(confidence = null)) =
-        CaptureViewModel("doc", repository, cropper, tempFolder.newFolder("captures"), dispatcher)
+    /** Deletes pages, or fails with [failure]. */
+    private class FakeEditor(private val failure: Exception? = null) : DocumentEditor {
+        val deleted = mutableListOf<String>()
+
+        override suspend fun deletePage(pageId: String) {
+            failure?.let { throw it }
+            deleted += pageId
+        }
+
+        override suspend fun renameDocument(documentId: String, title: String): Document = error("unused")
+        override suspend fun deleteDocument(documentId: String) = error("unused")
+        override suspend fun movePage(pageId: String, toPosition: Int): List<Page> = error("unused")
+    }
+
+    private fun viewModel(
+        repository: DocumentRepository,
+        cropper: PageCropper = FakeCropper(confidence = null),
+        editor: DocumentEditor = FakeEditor(),
+    ) = CaptureViewModel("doc", repository, cropper, editor, tempFolder.newFolder(), dispatcher)
+
+    @Test
+    fun `keeps the captured pages as stored, cropped when possible`() = runTest(dispatcher) {
+        val viewModel = viewModel(FakeRepository(), FakeCropper(confidence = 0.95f))
+
+        viewModel.onPictureTaken(viewModel.newCaptureFile().apply { writeText("jpeg") })
+        advanceUntilIdle()
+
+        val page = viewModel.uiState.value.captured.single()
+        assertEquals("p1", page.id)
+        assertEquals(File("/p.jpg"), page.displayFile)
+    }
+
+    @Test
+    fun `discarding removes the page from the document and the session`() = runTest(dispatcher) {
+        val editor = FakeEditor()
+        val viewModel = viewModel(FakeRepository(), editor = editor)
+        repeat(2) { viewModel.onPictureTaken(viewModel.newCaptureFile().apply { writeText("jpeg") }) }
+        advanceUntilIdle()
+
+        viewModel.discard("p2")
+        advanceUntilIdle()
+
+        assertEquals(listOf("p2"), editor.deleted)
+        assertEquals(listOf("p1"), viewModel.uiState.value.captured.map { it.id })
+        assertEquals(1, viewModel.uiState.value.capturedCount)
+    }
+
+    @Test
+    fun `failed discards keep the page and report`() = runTest(dispatcher) {
+        val viewModel = viewModel(FakeRepository(), editor = FakeEditor(DocumentException.Storage("disk")))
+        viewModel.onPictureTaken(viewModel.newCaptureFile().apply { writeText("jpeg") })
+        advanceUntilIdle()
+
+        viewModel.discard("p1")
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(1, state.capturedCount)
+        assertEquals(CaptureMessage.DiscardFailed, state.message)
+    }
 
     @Test
     fun `crops automatically when the sheet is detected confidently`() = runTest(dispatcher) {
@@ -90,7 +149,7 @@ class CaptureViewModelTest {
     @Test
     fun `keeps the original when detection is unsure or cropping fails`() = runTest(dispatcher) {
         for (cropper in listOf(FakeCropper(confidence = 0.3f), FakeCropper(confidence = 0.9f, failCrop = true))) {
-            val viewModel = CaptureViewModel("doc", FakeRepository(), cropper, tempFolder.newFolder(), dispatcher)
+            val viewModel = viewModel(FakeRepository(), cropper)
 
             viewModel.onPictureTaken(viewModel.newCaptureFile().apply { writeText("jpeg") })
             advanceUntilIdle()

@@ -22,15 +22,20 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -51,7 +56,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -62,6 +69,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.nolva.R
+import app.nolva.data.Page
+import coil3.compose.AsyncImage
 import java.io.File
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -135,6 +144,7 @@ fun CaptureRoute(
         },
         onDone = onDone,
         onMessageShown = viewModel::messageShown,
+        onDiscard = viewModel::discard,
         modifier = modifier,
     )
 }
@@ -151,8 +161,10 @@ private fun CaptureScreen(
     onOpenSettings: () -> Unit,
     onDone: () -> Unit,
     onMessageShown: () -> Unit,
+    onDiscard: (pageId: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var reviewingId by rememberSaveable { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     val messageText = uiState.message?.let { stringResource(it.textRes()) }
     LaunchedEffect(uiState.message) {
@@ -184,7 +196,8 @@ private fun CaptureScreen(
 
         if (hasPermission) {
             CaptureControls(
-                capturedCount = uiState.capturedCount,
+                captured = uiState.captured,
+                onReview = { reviewingId = it.id },
                 isBusy = isCapturing,
                 isSaving = uiState.isSaving,
                 onShutter = onShutter,
@@ -203,11 +216,44 @@ private fun CaptureScreen(
                 .padding(bottom = 120.dp),
         )
     }
+
+    val reviewing = uiState.captured.find { it.id == reviewingId }
+    if (reviewing != null) {
+        val number = uiState.captured.indexOf(reviewing) + 1
+        AlertDialog(
+            onDismissRequest = { reviewingId = null },
+            title = { Text(stringResource(R.string.page_number, number)) },
+            text = {
+                AsyncImage(
+                    model = reviewing.displayFile,
+                    contentDescription = stringResource(R.string.page_number, number),
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 420.dp),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { reviewingId = null }) { Text(stringResource(R.string.keep)) }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        reviewingId = null
+                        onDiscard(reviewing.id)
+                    },
+                ) {
+                    Text(stringResource(R.string.discard), color = MaterialTheme.colorScheme.error)
+                }
+            },
+        )
+    }
 }
 
 @Composable
 private fun CaptureControls(
-    capturedCount: Int,
+    captured: List<Page>,
+    onReview: (Page) -> Unit,
     isBusy: Boolean,
     isSaving: Boolean,
     onShutter: () -> Unit,
@@ -222,12 +268,27 @@ private fun CaptureControls(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text(
-            text = pluralStringResource(R.plurals.pages_captured, capturedCount, capturedCount),
-            color = Color.White,
-            style = MaterialTheme.typography.labelLarge,
-            modifier = Modifier.weight(1f),
-        )
+        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+            captured.lastOrNull()?.let { last ->
+                // The last page as stored, already auto-cropped: tap to check it.
+                AsyncImage(
+                    model = last.displayFile,
+                    contentDescription = stringResource(R.string.review_last_page),
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(width = 42.dp, height = 56.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .border(1.dp, Color.White, RoundedCornerShape(4.dp))
+                        .clickable(role = Role.Button) { onReview(last) },
+                )
+                Spacer(Modifier.width(10.dp))
+            }
+            Text(
+                text = pluralStringResource(R.plurals.pages_captured, captured.size, captured.size),
+                color = Color.White,
+                style = MaterialTheme.typography.labelLarge,
+            )
+        }
 
         ShutterButton(enabled = !isBusy, onClick = onShutter)
 
@@ -335,4 +396,5 @@ private suspend fun ImageCapture.takePictureTo(file: File) = suspendCancellableC
 private fun CaptureMessage.textRes(): Int = when (this) {
     CaptureMessage.CaptureFailed -> R.string.error_capture
     CaptureMessage.SaveFailed -> R.string.error_import_page
+    CaptureMessage.DiscardFailed -> R.string.error_delete_page
 }
