@@ -16,8 +16,18 @@
     <string name="create">Crear</string>
     <string name="cancel">Cancelar</string>
 
+    <!-- Document detail -->
+    <string name="back">Volver</string>
+    <string name="add_from_gallery">Agregar desde galería</string>
+    <string name="no_pages_title">Aún no hay páginas</string>
+    <string name="no_pages_body">Agrega páginas desde tu galería. El escaneo con la cámara viene pronto.</string>
+    <string name="page_number">Página %1$d</string>
+
     <!-- Errors -->
     <string name="error_load_documents">No se pudieron cargar tus documentos.</string>
     <string name="error_create_document">No se pudo crear el documento.</string>
     <string name="error_invalid_title">Ese título no es válido.</string>
+    <string name="error_load_pages">No se pudieron cargar las páginas.</string>
+    <string name="error_import_page">No se pudo agregar la imagen.</string>
+    <string name="error_unsupported_image">Ese formato de imagen no es compatible.</string>
 </resources>

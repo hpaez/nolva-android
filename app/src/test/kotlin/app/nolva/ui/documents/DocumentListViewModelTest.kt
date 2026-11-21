@@ -53,10 +53,11 @@ class DocumentListViewModelTest {
     }
 
     @Test
-    fun `loads documents on start`() = runTest(dispatcher) {
+    fun `loads documents on refresh`() = runTest(dispatcher) {
         val repository = FakeRepository().apply { documents += document("a", "Lease") }
 
         val viewModel = DocumentListViewModel(repository)
+        viewModel.refresh()
         advanceUntilIdle()
 
         val state = viewModel.uiState.value
@@ -69,6 +70,7 @@ class DocumentListViewModelTest {
         val repository = FakeRepository().apply { listFailure = DocumentException.Storage("disk") }
 
         val viewModel = DocumentListViewModel(repository)
+        viewModel.refresh()
         advanceUntilIdle()
 
         assertEquals(DocumentListMessage.LoadFailed, viewModel.uiState.value.message)
@@ -78,6 +80,7 @@ class DocumentListViewModelTest {
     fun `new documents appear first`() = runTest(dispatcher) {
         val repository = FakeRepository().apply { documents += document("a", "Old") }
         val viewModel = DocumentListViewModel(repository)
+        viewModel.refresh()
         advanceUntilIdle()
 
         viewModel.createDocument("New")
@@ -92,6 +95,7 @@ class DocumentListViewModelTest {
     fun `invalid titles map to a specific message that can be dismissed`() = runTest(dispatcher) {
         val repository = FakeRepository().apply { createFailure = DocumentException.InvalidInput("empty") }
         val viewModel = DocumentListViewModel(repository)
+        viewModel.refresh()
         advanceUntilIdle()
 
         viewModel.createDocument(" ")

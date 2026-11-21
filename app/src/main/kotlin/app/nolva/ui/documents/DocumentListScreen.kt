@@ -50,11 +50,19 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 
 @Composable
-fun DocumentListRoute(viewModel: DocumentListViewModel, modifier: Modifier = Modifier) {
+fun DocumentListRoute(
+    viewModel: DocumentListViewModel,
+    onOpenDocument: (Document) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    // Reload whenever this screen is shown again (e.g. back from a document
+    // whose page count changed).
+    LaunchedEffect(viewModel) { viewModel.refresh() }
     DocumentListScreen(
         uiState = uiState,
         onCreateDocument = viewModel::createDocument,
+        onOpenDocument = onOpenDocument,
         onMessageShown = viewModel::messageShown,
         modifier = modifier,
     )
@@ -65,6 +73,7 @@ fun DocumentListRoute(viewModel: DocumentListViewModel, modifier: Modifier = Mod
 fun DocumentListScreen(
     uiState: DocumentListUiState,
     onCreateDocument: (String) -> Unit,
+    onOpenDocument: (Document) -> Unit,
     onMessageShown: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -118,6 +127,7 @@ fun DocumentListScreen(
             else -> DocumentList(
                 documents = uiState.documents,
                 contentPadding = innerPadding,
+                onOpenDocument = onOpenDocument,
             )
         }
     }
@@ -134,7 +144,11 @@ fun DocumentListScreen(
 }
 
 @Composable
-private fun DocumentList(documents: List<Document>, contentPadding: PaddingValues) {
+private fun DocumentList(
+    documents: List<Document>,
+    contentPadding: PaddingValues,
+    onOpenDocument: (Document) -> Unit,
+) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
@@ -147,14 +161,14 @@ private fun DocumentList(documents: List<Document>, contentPadding: PaddingValue
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         items(documents, key = { it.id }) { document ->
-            DocumentRow(document)
+            DocumentRow(document, onClick = { onOpenDocument(document) })
         }
     }
 }
 
 @Composable
-private fun DocumentRow(document: Document) {
-    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+private fun DocumentRow(document: Document, onClick: () -> Unit) {
+    OutlinedCard(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -254,6 +268,7 @@ private fun DocumentListPreview() {
         DocumentListScreen(
             uiState = DocumentListUiState(isLoading = false, documents = previewDocuments),
             onCreateDocument = {},
+            onOpenDocument = {},
             onMessageShown = {},
         )
     }
@@ -266,6 +281,7 @@ private fun DocumentListEmptyPreview() {
         DocumentListScreen(
             uiState = DocumentListUiState(isLoading = false),
             onCreateDocument = {},
+            onOpenDocument = {},
             onMessageShown = {},
         )
     }
