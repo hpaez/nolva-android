@@ -6,12 +6,19 @@ import app.nolva.data.DocumentException
 import app.nolva.data.DocumentRepository
 import app.nolva.data.Page
 import app.nolva.data.PageImporter
+import app.nolva.data.PaperSize
+import app.nolva.data.PdfExport
+import app.nolva.data.PdfExporter
+import app.nolva.data.pdfFileName
+import java.io.File
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class DocumentDetailUiState(
     val isLoading: Boolean = true,
@@ -19,16 +26,25 @@ data class DocumentDetailUiState(
     /** Number of images still being imported. */
     val pendingImports: Int = 0,
     val message: DocumentDetailMessage? = null,
+    val isExporting: Boolean = false,
+    /** A finished export waiting to be handed to the share sheet. */
+    val pendingShare: PdfExport? = null,
 ) {
     val isImporting: Boolean get() = pendingImports > 0
 }
 
-enum class DocumentDetailMessage { LoadFailed, ImportFailed, UnsupportedImage }
+enum class DocumentDetailMessage { LoadFailed, ImportFailed, UnsupportedImage, ExportFailed }
+
+/** Exports older than this are deleted before a new export. */
+private const val EXPORT_MAX_AGE_MS = 24L * 60 * 60 * 1000
 
 class DocumentDetailViewModel(
     private val documentId: String,
     private val repository: DocumentRepository,
     private val importer: PageImporter,
+    private val exporter: PdfExporter,
+    private val exportDir: File,
+    private val ioDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DocumentDetailUiState())
@@ -73,6 +89,37 @@ class DocumentDetailViewModel(
                 }
             }
         }
+    }
+
+    /** Exports the document as `<title>.pdf` and queues it for sharing. */
+    fun exportPdf(title: String, paperSize: PaperSize) {
+        if (_uiState.value.isExporting) return
+        _uiState.update { it.copy(isExporting = true) }
+        viewModelScope.launch {
+            val result = runSuspendCatching {
+                val output = withContext(ioDispatcher) {
+                    exportDir.mkdirs()
+                    deleteOldExports()
+                    File(exportDir, pdfFileName(title))
+                }
+                exporter.exportPdf(documentId, output, paperSize)
+            }
+            _uiState.update { state ->
+                result.fold(
+                    onSuccess = { state.copy(isExporting = false, pendingShare = it) },
+                    onFailure = { state.copy(isExporting = false, message = DocumentDetailMessage.ExportFailed) },
+                )
+            }
+        }
+    }
+
+    fun shareHandled() {
+        _uiState.update { it.copy(pendingShare = null) }
+    }
+
+    private fun deleteOldExports() {
+        val cutoff = System.currentTimeMillis() - EXPORT_MAX_AGE_MS
+        exportDir.listFiles()?.filter { it.lastModified() < cutoff }?.forEach { it.delete() }
     }
 
     fun messageShown() {

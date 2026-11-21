@@ -1,5 +1,8 @@
 package app.nolva.ui.document
 
+import android.content.ClipData
+import android.content.Context
+import android.content.Intent
 import android.content.res.Configuration
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -18,6 +21,8 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
@@ -34,18 +39,23 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.nolva.R
 import app.nolva.data.Page
+import app.nolva.data.PaperSize
 import app.nolva.ui.theme.NolvaTheme
 import coil3.compose.AsyncImage
 import java.io.File
@@ -70,6 +80,13 @@ fun DocumentDetailRoute(
         ActivityResultContracts.PickMultipleVisualMedia(MAX_PICK),
     ) { uris -> viewModel.importImages(uris.map { it.toString() }) }
 
+    val context = LocalContext.current
+    LaunchedEffect(uiState.pendingShare) {
+        val export = uiState.pendingShare ?: return@LaunchedEffect
+        sharePdf(context, export.file, title)
+        viewModel.shareHandled()
+    }
+
     DocumentDetailScreen(
         title = title,
         uiState = uiState,
@@ -80,8 +97,26 @@ fun DocumentDetailRoute(
             pickImages.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
         },
         onMessageShown = viewModel::messageShown,
+        onExportPdf = { paperSize -> viewModel.exportPdf(title, paperSize) },
         modifier = modifier,
     )
+}
+
+/**
+ * Opens the system share sheet for [pdf]. The file is exposed through the
+ * app's FileProvider with a temporary read grant for the chosen app only.
+ */
+private fun sharePdf(context: Context, pdf: File, title: String) {
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", pdf)
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = "application/pdf"
+        putExtra(Intent.EXTRA_STREAM, uri)
+        putExtra(Intent.EXTRA_TITLE, pdf.name)
+        putExtra(Intent.EXTRA_SUBJECT, title)
+        clipData = ClipData.newRawUri(pdf.name, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(Intent.createChooser(send, null))
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -95,7 +130,9 @@ fun DocumentDetailScreen(
     onMessageShown: () -> Unit,
     modifier: Modifier = Modifier,
     onOpenPage: (Int) -> Unit = {},
+    onExportPdf: (PaperSize) -> Unit = {},
 ) {
+    var showPaperMenu by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val messageText = uiState.message?.let { stringResource(it.textRes()) }
     LaunchedEffect(uiState.message) {
@@ -120,9 +157,28 @@ fun DocumentDetailScreen(
                         TextButton(onClick = onAddFromGallery) {
                             Text(stringResource(R.string.gallery))
                         }
+                        Box {
+                            TextButton(
+                                onClick = { showPaperMenu = true },
+                                enabled = uiState.pages.isNotEmpty() && !uiState.isExporting,
+                            ) {
+                                Text(stringResource(R.string.export_pdf))
+                            }
+                            DropdownMenu(expanded = showPaperMenu, onDismissRequest = { showPaperMenu = false }) {
+                                PaperSize.entries.forEach { size ->
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(size.labelRes())) },
+                                        onClick = {
+                                            showPaperMenu = false
+                                            onExportPdf(size)
+                                        },
+                                    )
+                                }
+                            }
+                        }
                     },
                 )
-                if (uiState.isImporting) {
+                if (uiState.isImporting || uiState.isExporting) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 }
             }
@@ -228,6 +284,14 @@ private fun DocumentDetailMessage.textRes(): Int = when (this) {
     DocumentDetailMessage.LoadFailed -> R.string.error_load_pages
     DocumentDetailMessage.ImportFailed -> R.string.error_import_page
     DocumentDetailMessage.UnsupportedImage -> R.string.error_unsupported_image
+    DocumentDetailMessage.ExportFailed -> R.string.error_export_pdf
+}
+
+private fun PaperSize.labelRes(): Int = when (this) {
+    PaperSize.A4 -> R.string.paper_a4
+    PaperSize.Letter -> R.string.paper_letter
+    PaperSize.Legal -> R.string.paper_legal
+    PaperSize.FitImage -> R.string.paper_fit_image
 }
 
 @Preview(name = "Empty", showBackground = true)

@@ -5,6 +5,9 @@ import app.nolva.core.NolvaCoreInterface
 import app.nolva.core.NolvaException
 import app.nolva.core.PageCorners
 import app.nolva.core.PageInfo
+import app.nolva.core.PdfExportInfo
+import app.nolva.core.PdfOptions
+import app.nolva.core.PaperSize as CorePaperSize
 import app.nolva.core.CornerDetection as CoreCornerDetection
 import app.nolva.core.NormalizedPoint as CorePoint
 import java.io.File
@@ -49,6 +52,13 @@ class CoreDocumentRepositoryTest {
         override fun listPages(documentId: String): List<PageInfo> = emptyList()
 
         override fun getPage(pageId: String): PageInfo = pageInfo("doc-1")
+
+        var exportedWith: PdfOptions? = null
+
+        override fun exportPdf(documentId: String, outputPath: String, options: PdfOptions): PdfExportInfo {
+            exportedWith = options
+            return PdfExportInfo(pageCount = 2u, sizeBytes = 1234u)
+        }
 
         override fun detectPageCorners(pageId: String): CoreCornerDetection? =
             CoreCornerDetection(corners = coreCorners, confidence = 0.9f)
@@ -126,6 +136,17 @@ class CoreDocumentRepositoryTest {
         assertEquals(File("/data/nolva/doc-1/processed.jpg"), page.processedFile)
         assertEquals(page.processedFile, page.displayFile)
         assertEquals(detection.corners, page.corners)
+    }
+
+    @Test
+    fun `maps pdf export options and results`() = runTest(dispatcher) {
+        val core = FakeCore()
+        val repository = CoreDocumentRepository(dispatcher) { core }
+
+        val export = repository.exportPdf("doc-1", File("/cache/exports/a.pdf"), PaperSize.Legal)
+
+        assertEquals(CorePaperSize.LEGAL, core.exportedWith?.paperSize)
+        assertEquals(PdfExport(File("/cache/exports/a.pdf"), pageCount = 2, sizeBytes = 1234), export)
     }
 
     @Test

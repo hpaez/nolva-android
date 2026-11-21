@@ -45,6 +45,13 @@
     <string name="grant_permission">Allow camera</string>
     <string name="open_settings">Open settings</string>
 
+    <!-- PDF export -->
+    <string name="export_pdf">PDF</string>
+    <string name="paper_a4">A4</string>
+    <string name="paper_letter">Letter</string>
+    <string name="paper_legal">Legal</string>
+    <string name="paper_fit_image">Image size</string>
+
     <!-- Crop editor -->
     <string name="adjust_crop">Adjust crop</string>
     <string name="crop_title">Adjust crop</string>
@@ -60,6 +67,7 @@
     <string name="error_invalid_title">That title isn\'t valid.</string>
     <string name="error_load_pages">Couldn\'t load the pages.</string>
     <string name="error_import_page">Couldn\'t add the image.</string>
+    <string name="error_export_pdf">Couldn\'t create the PDF.</string>
     <string name="error_capture">Couldn\'t take the photo. Try again.</string>
     <string name="error_unsupported_image">That image format isn\'t supported.</string>
 </resources>

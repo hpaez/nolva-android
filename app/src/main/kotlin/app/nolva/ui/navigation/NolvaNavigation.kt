@@ -77,6 +77,9 @@ fun NolvaNavigation(container: AppContainer, modifier: Modifier = Modifier) {
                                     documentId = key.documentId,
                                     repository = container.documentRepository,
                                     importer = container.pageImporter,
+                                    exporter = container.pdfExporter,
+                                    exportDir = container.exportDir,
+                                    ioDispatcher = Dispatchers.IO,
                                 )
                             }
                         },

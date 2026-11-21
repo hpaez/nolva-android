@@ -5,6 +5,8 @@ import app.nolva.core.NolvaCoreInterface
 import app.nolva.core.NolvaException
 import app.nolva.core.PageCorners
 import app.nolva.core.PageInfo
+import app.nolva.core.PdfOptions
+import app.nolva.core.PaperSize as CorePaperSize
 import app.nolva.core.NormalizedPoint as CorePoint
 import java.io.File
 import java.time.Instant
@@ -12,7 +14,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 
 /**
- * [DocumentRepository] and [PageCropper] backed by the Rust core.
+ * [DocumentRepository], [PageCropper] and [PdfExporter] backed by the Rust core.
  *
  * Core calls are synchronous and may block on disk I/O, so every call runs on
  * [ioDispatcher]. The core itself is created lazily on that dispatcher too:
@@ -22,7 +24,7 @@ import kotlinx.coroutines.withContext
 class CoreDocumentRepository(
     private val ioDispatcher: CoroutineDispatcher,
     coreFactory: () -> NolvaCoreInterface,
-) : DocumentRepository, PageCropper {
+) : DocumentRepository, PageCropper, PdfExporter {
 
     private val core by lazy(coreFactory)
 
@@ -40,6 +42,12 @@ class CoreDocumentRepository(
 
     override suspend fun listPages(documentId: String): List<Page> = call {
         core.listPages(documentId).map { it.toPage() }
+    }
+
+    override suspend fun exportPdf(documentId: String, output: File, paperSize: PaperSize): PdfExport = call {
+        val options = PdfOptions(paperSize = paperSize.toCore(), marginMm = 0f)
+        val info = core.exportPdf(documentId, output.absolutePath, options)
+        PdfExport(output, info.pageCount.toInt(), info.sizeBytes.toLong())
     }
 
     override suspend fun getPage(pageId: String): Page = call {
@@ -80,6 +88,13 @@ private fun PageInfo.toPage() = Page(
     processedFile = processedPath?.let(::File),
     corners = corners?.toCorners(),
 )
+
+private fun PaperSize.toCore() = when (this) {
+    PaperSize.A4 -> CorePaperSize.A4
+    PaperSize.Letter -> CorePaperSize.LETTER
+    PaperSize.Legal -> CorePaperSize.LEGAL
+    PaperSize.FitImage -> CorePaperSize.FIT_IMAGE
+}
 
 private fun CorePoint.toPoint() = NormalizedPoint(x, y)
 
