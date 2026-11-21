@@ -1,6 +1,7 @@
 package app.nolva.ui.documents
 
 import app.nolva.data.Document
+import app.nolva.data.DocumentEditor
 import app.nolva.data.DocumentException
 import app.nolva.data.DocumentRepository
 import app.nolva.data.Page
@@ -52,11 +53,107 @@ class DocumentListViewModelTest {
         override suspend fun listPages(documentId: String): List<Page> = emptyList()
     }
 
+    private class FakeEditor(private val repository: FakeRepository) : DocumentEditor {
+        var failure: Exception? = null
+
+        override suspend fun renameDocument(documentId: String, title: String): Document {
+            failure?.let { throw it }
+            val index = repository.documents.indexOfFirst { it.id == documentId }
+            return repository.documents[index].copy(title = title).also { repository.documents[index] = it }
+        }
+
+        override suspend fun deleteDocument(documentId: String) {
+            failure?.let { throw it }
+            repository.documents.removeAll { it.id == documentId }
+        }
+
+        override suspend fun deletePage(pageId: String) = error("unused")
+
+        override suspend fun movePage(pageId: String, toPosition: Int): List<Page> = error("unused")
+    }
+
+    private fun viewModel(repository: FakeRepository, editor: DocumentEditor = FakeEditor(repository)) =
+        DocumentListViewModel(repository, editor)
+
+    @Test
+    fun `renamed documents move to the top`() = runTest(dispatcher) {
+        val repository = FakeRepository().apply { documents += listOf(document("a", "First"), document("b", "Second")) }
+        val viewModel = viewModel(repository)
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        viewModel.renameDocument("b", "Renamed")
+        advanceUntilIdle()
+
+        assertEquals(listOf("Renamed", "First"), viewModel.uiState.value.documents.map { it.title })
+    }
+
+    @Test
+    fun `rename failures keep the list and report`() = runTest(dispatcher) {
+        val repository = FakeRepository().apply { documents += document("a", "Lease") }
+        val editor = FakeEditor(repository).apply { failure = DocumentException.Storage("disk") }
+        val viewModel = viewModel(repository, editor)
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        viewModel.renameDocument("a", "New")
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(listOf("Lease"), state.documents.map { it.title })
+        assertEquals(DocumentListMessage.RenameFailed, state.message)
+    }
+
+    @Test
+    fun `deleted documents leave the list`() = runTest(dispatcher) {
+        val repository = FakeRepository().apply { documents += listOf(document("a", "Keep"), document("b", "Drop")) }
+        val viewModel = viewModel(repository)
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        viewModel.deleteDocument("b")
+        advanceUntilIdle()
+
+        assertEquals(listOf("Keep"), viewModel.uiState.value.documents.map { it.title })
+    }
+
+    @Test
+    fun `deleting a document that is already gone still removes it`() = runTest(dispatcher) {
+        val repository = FakeRepository().apply { documents += document("a", "Ghost") }
+        val editor = FakeEditor(repository).apply { failure = DocumentException.NotFound("a") }
+        val viewModel = viewModel(repository, editor)
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        viewModel.deleteDocument("a")
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(emptyList<Document>(), state.documents)
+        assertEquals(null, state.message)
+    }
+
+    @Test
+    fun `other delete failures keep the document and report`() = runTest(dispatcher) {
+        val repository = FakeRepository().apply { documents += document("a", "Lease") }
+        val editor = FakeEditor(repository).apply { failure = DocumentException.Storage("disk") }
+        val viewModel = viewModel(repository, editor)
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        viewModel.deleteDocument("a")
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(listOf("Lease"), state.documents.map { it.title })
+        assertEquals(DocumentListMessage.DeleteFailed, state.message)
+    }
+
     @Test
     fun `loads documents on refresh`() = runTest(dispatcher) {
         val repository = FakeRepository().apply { documents += document("a", "Lease") }
 
-        val viewModel = DocumentListViewModel(repository)
+        val viewModel = viewModel(repository)
         viewModel.refresh()
         advanceUntilIdle()
 
@@ -69,7 +166,7 @@ class DocumentListViewModelTest {
     fun `reports load failures`() = runTest(dispatcher) {
         val repository = FakeRepository().apply { listFailure = DocumentException.Storage("disk") }
 
-        val viewModel = DocumentListViewModel(repository)
+        val viewModel = viewModel(repository)
         viewModel.refresh()
         advanceUntilIdle()
 
@@ -79,7 +176,7 @@ class DocumentListViewModelTest {
     @Test
     fun `new documents appear first`() = runTest(dispatcher) {
         val repository = FakeRepository().apply { documents += document("a", "Old") }
-        val viewModel = DocumentListViewModel(repository)
+        val viewModel = viewModel(repository)
         viewModel.refresh()
         advanceUntilIdle()
 
@@ -94,7 +191,7 @@ class DocumentListViewModelTest {
     @Test
     fun `invalid titles map to a specific message that can be dismissed`() = runTest(dispatcher) {
         val repository = FakeRepository().apply { createFailure = DocumentException.InvalidInput("empty") }
-        val viewModel = DocumentListViewModel(repository)
+        val viewModel = viewModel(repository)
         viewModel.refresh()
         advanceUntilIdle()
 

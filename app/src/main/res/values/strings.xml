@@ -61,6 +61,23 @@
     <string name="crop_invalid_corners">The corners can\'t cross. Adjust them and try again.</string>
     <string name="crop_save_failed">Couldn\'t save the crop.</string>
 
+    <!-- Rename, delete and reorder -->
+    <string name="more_options">More options</string>
+    <!-- %1$d: 1-based page number -->
+    <string name="page_options">Options for page %1$d</string>
+    <string name="rename">Rename</string>
+    <string name="delete">Delete</string>
+    <string name="save">Save</string>
+    <string name="rename_document">Rename document</string>
+    <string name="delete_document_title">Delete document?</string>
+    <!-- %1$s: document title -->
+    <string name="delete_document_body">“%1$s” and all its pages will be deleted permanently. This can\'t be undone.</string>
+    <!-- %1$d: 1-based page number -->
+    <string name="delete_page_title">Delete page %1$d?</string>
+    <string name="delete_page_body">The page will be deleted permanently. This can\'t be undone.</string>
+    <string name="move_page_earlier">Move earlier</string>
+    <string name="move_page_later">Move later</string>
+
     <!-- Errors -->
     <string name="error_load_documents">Couldn\'t load your documents.</string>
     <string name="error_create_document">Couldn\'t create the document.</string>
@@ -69,5 +86,9 @@
     <string name="error_import_page">Couldn\'t add the image.</string>
     <string name="error_export_pdf">Couldn\'t create the PDF.</string>
     <string name="error_capture">Couldn\'t take the photo. Try again.</string>
+    <string name="error_rename_document">Couldn\'t rename the document.</string>
+    <string name="error_delete_document">Couldn\'t delete the document.</string>
+    <string name="error_delete_page">Couldn\'t delete the page.</string>
+    <string name="error_move_page">Couldn\'t move the page.</string>
     <string name="error_unsupported_image">That image format isn\'t supported.</string>
 </resources>

@@ -5,15 +5,22 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
@@ -64,6 +71,8 @@ fun DocumentListRoute(
         onCreateDocument = viewModel::createDocument,
         onOpenDocument = onOpenDocument,
         onMessageShown = viewModel::messageShown,
+        onRenameDocument = viewModel::renameDocument,
+        onDeleteDocument = viewModel::deleteDocument,
         modifier = modifier,
     )
 }
@@ -76,8 +85,13 @@ fun DocumentListScreen(
     onOpenDocument: (Document) -> Unit,
     onMessageShown: () -> Unit,
     modifier: Modifier = Modifier,
+    onRenameDocument: (documentId: String, title: String) -> Unit = { _, _ -> },
+    onDeleteDocument: (documentId: String) -> Unit = {},
 ) {
     var showCreateDialog by rememberSaveable { mutableStateOf(false) }
+    // Ids rather than documents so the dialogs survive configuration changes.
+    var renamingId by rememberSaveable { mutableStateOf<String?>(null) }
+    var deletingId by rememberSaveable { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     val messageText = uiState.message?.let { stringResource(it.textRes()) }
@@ -128,17 +142,56 @@ fun DocumentListScreen(
                 documents = uiState.documents,
                 contentPadding = innerPadding,
                 onOpenDocument = onOpenDocument,
+                onRename = { renamingId = it.id },
+                onDelete = { deletingId = it.id },
             )
         }
     }
 
     if (showCreateDialog) {
-        CreateDocumentDialog(
+        TitleDialog(
+            heading = stringResource(R.string.new_document),
+            initialTitle = stringResource(R.string.default_document_title, formatDate(Instant.now())),
+            confirmLabel = stringResource(R.string.create),
             onConfirm = { title ->
                 showCreateDialog = false
                 onCreateDocument(title)
             },
             onDismiss = { showCreateDialog = false },
+        )
+    }
+
+    uiState.documents.find { it.id == renamingId }?.let { document ->
+        TitleDialog(
+            heading = stringResource(R.string.rename_document),
+            initialTitle = document.title,
+            confirmLabel = stringResource(R.string.save),
+            onConfirm = { title ->
+                renamingId = null
+                if (title != document.title) onRenameDocument(document.id, title)
+            },
+            onDismiss = { renamingId = null },
+        )
+    }
+
+    uiState.documents.find { it.id == deletingId }?.let { document ->
+        AlertDialog(
+            onDismissRequest = { deletingId = null },
+            title = { Text(stringResource(R.string.delete_document_title)) },
+            text = { Text(stringResource(R.string.delete_document_body, document.title)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        deletingId = null
+                        onDeleteDocument(document.id)
+                    },
+                ) {
+                    Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deletingId = null }) { Text(stringResource(R.string.cancel)) }
+            },
         )
     }
 }
@@ -148,6 +201,8 @@ private fun DocumentList(
     documents: List<Document>,
     contentPadding: PaddingValues,
     onOpenDocument: (Document) -> Unit,
+    onRename: (Document) -> Unit,
+    onDelete: (Document) -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -161,34 +216,73 @@ private fun DocumentList(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         items(documents, key = { it.id }) { document ->
-            DocumentRow(document, onClick = { onOpenDocument(document) })
+            DocumentRow(
+                document = document,
+                onClick = { onOpenDocument(document) },
+                onRename = { onRename(document) },
+                onDelete = { onDelete(document) },
+            )
         }
     }
 }
 
 @Composable
-private fun DocumentRow(document: Document, onClick: () -> Unit) {
+private fun DocumentRow(document: Document, onClick: () -> Unit, onRename: () -> Unit, onDelete: () -> Unit) {
     OutlinedCard(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(
-                text = document.title,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            DocumentSummary(document, Modifier.weight(1f))
+            DocumentMenu(onRename = onRename, onDelete = onDelete)
+        }
+    }
+}
+
+@Composable
+private fun DocumentMenu(onRename: () -> Unit, onDelete: () -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { expanded = true }) {
+            Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.more_options))
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.rename)) },
+                onClick = {
+                    expanded = false
+                    onRename()
+                },
             )
-            Text(
-                text = stringResource(
-                    R.string.document_subtitle,
-                    pluralStringResource(R.plurals.page_count, document.pageCount, document.pageCount),
-                    formatDate(document.updatedAt),
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = NolvaTheme.colors.inkMuted,
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) },
+                onClick = {
+                    expanded = false
+                    onDelete()
+                },
             )
         }
+    }
+}
+
+@Composable
+private fun DocumentSummary(document: Document, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.padding(start = 16.dp, top = 16.dp, bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            text = document.title,
+            style = MaterialTheme.typography.titleMedium,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = stringResource(
+                R.string.document_subtitle,
+                pluralStringResource(R.plurals.page_count, document.pageCount, document.pageCount),
+                formatDate(document.updatedAt),
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = NolvaTheme.colors.inkMuted,
+        )
     }
 }
 
@@ -215,15 +309,21 @@ private fun EmptyState(modifier: Modifier = Modifier) {
     }
 }
 
+/** Asks for a document title; used both to create and to rename. */
 @Composable
-private fun CreateDocumentDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
-    val defaultTitle = stringResource(R.string.default_document_title, formatDate(Instant.now()))
-    var title by rememberSaveable { mutableStateOf(defaultTitle) }
+private fun TitleDialog(
+    heading: String,
+    initialTitle: String,
+    confirmLabel: String,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var title by rememberSaveable { mutableStateOf(initialTitle) }
     val isValid = title.isNotBlank() && title.trim().length <= MAX_TITLE_LENGTH
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.new_document)) },
+        title = { Text(heading) },
         text = {
             OutlinedTextField(
                 value = title,
@@ -234,7 +334,7 @@ private fun CreateDocumentDialog(onConfirm: (String) -> Unit, onDismiss: () -> U
         },
         confirmButton = {
             TextButton(onClick = { onConfirm(title.trim()) }, enabled = isValid) {
-                Text(stringResource(R.string.create))
+                Text(confirmLabel)
             }
         },
         dismissButton = {
@@ -253,6 +353,8 @@ private fun DocumentListMessage.textRes(): Int = when (this) {
     DocumentListMessage.LoadFailed -> R.string.error_load_documents
     DocumentListMessage.CreateFailed -> R.string.error_create_document
     DocumentListMessage.InvalidTitle -> R.string.error_invalid_title
+    DocumentListMessage.RenameFailed -> R.string.error_rename_document
+    DocumentListMessage.DeleteFailed -> R.string.error_delete_document
 }
 
 private val previewDocuments = listOf(
