@@ -1,4 +1,15 @@
 version: 2
+
+registries:
+  # nolva-core's .aar lives in a private GitHub Packages registry. The token
+  # is a Dependabot secret (Settings → Secrets and variables → Dependabot):
+  # a classic PAT with only read:packages.
+  nolva-core:
+    type: maven-repository
+    url: https://maven.pkg.github.com/hpaez/nolva-core
+    username: hpaez
+    password: ${{secrets.NOLVA_PACKAGES_TOKEN}}
+
 updates:
   - package-ecosystem: github-actions
     directory: /
@@ -10,8 +21,13 @@ updates:
 
   - package-ecosystem: gradle
     directory: /
+    # Public repositories come from the build files; this adds credentials
+    # for the private one.
+    registries: "*"
     schedule:
       interval: weekly
+    # app.nolva:nolva-core matches no group, so each core release gets its
+    # own PR, easy to review on its own.
     groups:
       androidx:
         patterns: ["androidx.*"]
