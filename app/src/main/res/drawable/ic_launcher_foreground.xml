@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  "Pliegue" mark: a paper strip folded like an accordion into an N.
+  Drawn on the brand's 100×100 grid (bars 15×52 at x=25 and x=60, y=24;
+  diagonal from (25,24)-(40,24) to (60,76)-(75,76)), scaled by 0.88 and
+  centred in the 108 dp adaptive-icon canvas so it sits well inside the
+  66 dp safe zone that every launcher mask keeps.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.88"
+        android:scaleY="0.88"
+        android:translateX="10"
+        android:translateY="10">
+        <!-- Cream bars (surface-100) -->
+        <path
+            android:fillColor="#FBF6EE"
+            android:pathData="M25,24h15v52h-15z" />
+        <path
+            android:fillColor="#FBF6EE"
+            android:pathData="M60,24h15v52h-15z" />
+        <!-- Cacao fold (ink) -->
+        <path
+            android:fillColor="#3A2A22"
+            android:pathData="M25,24L40,24L75,76L60,76z" />
+    </group>
+</vector>

@@ -1,4 +1,6 @@
 <resources>
     <!-- Window background (surface-100), shown before Compose draws. -->
     <color name="window_background">#FBF6EE</color>
+    <!-- Launcher icon background: brand clay. Same in dark mode on purpose. -->
+    <color name="ic_launcher_background">#B84E2A</color>
 </resources>
