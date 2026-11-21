@@ -1,6 +1,7 @@
 package app.nolva.ui.documents
 
 import android.content.res.Configuration
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,10 +10,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -39,8 +46,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -51,6 +62,7 @@ import app.nolva.data.Document
 import app.nolva.data.MAX_TITLE_LENGTH
 import app.nolva.ui.theme.NolvaTheme
 import app.nolva.ui.theme.WordmarkStyle
+import coil3.compose.AsyncImage
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -73,6 +85,7 @@ fun DocumentListRoute(
         onMessageShown = viewModel::messageShown,
         onRenameDocument = viewModel::renameDocument,
         onDeleteDocument = viewModel::deleteDocument,
+        onSearch = viewModel::search,
         modifier = modifier,
     )
 }
@@ -87,6 +100,7 @@ fun DocumentListScreen(
     modifier: Modifier = Modifier,
     onRenameDocument: (documentId: String, title: String) -> Unit = { _, _ -> },
     onDeleteDocument: (documentId: String) -> Unit = {},
+    onSearch: (query: String) -> Unit = {},
 ) {
     var showCreateDialog by rememberSaveable { mutableStateOf(false) }
     // Ids rather than documents so the dialogs survive configuration changes.
@@ -138,13 +152,30 @@ fun DocumentListScreen(
 
             uiState.documents.isEmpty() -> EmptyState(Modifier.padding(innerPadding))
 
-            else -> DocumentList(
-                documents = uiState.documents,
-                contentPadding = innerPadding,
-                onOpenDocument = onOpenDocument,
-                onRename = { renamingId = it.id },
-                onDelete = { deletingId = it.id },
-            )
+            else -> Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = innerPadding.calculateTopPadding()),
+            ) {
+                SearchField(
+                    query = uiState.query,
+                    onQueryChange = onSearch,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+                if (uiState.visibleDocuments.isEmpty()) {
+                    NoResults(uiState.query)
+                } else {
+                    DocumentList(
+                        documents = uiState.visibleDocuments,
+                        contentPadding = PaddingValues(bottom = innerPadding.calculateBottomPadding()),
+                        onOpenDocument = onOpenDocument,
+                        onRename = { renamingId = it.id },
+                        onDelete = { deletingId = it.id },
+                    )
+                }
+            }
         }
     }
 
@@ -230,10 +261,69 @@ private fun DocumentList(
 private fun DocumentRow(document: Document, onClick: () -> Unit, onRename: () -> Unit, onDelete: () -> Unit) {
     OutlinedCard(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            Cover(document)
             DocumentSummary(document, Modifier.weight(1f))
             DocumentMenu(onRename = onRename, onDelete = onDelete)
         }
     }
+}
+
+/** First page of the document, or an empty sheet while it has no pages. */
+@Composable
+private fun Cover(document: Document) {
+    Box(
+        modifier = Modifier
+            .padding(start = 12.dp, top = 12.dp, bottom = 12.dp)
+            .size(width = 48.dp, height = 64.dp)
+            .clip(RoundedCornerShape(4.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        document.coverFile?.let { cover ->
+            // Coil downsamples to this small size; full pages never load here.
+            AsyncImage(
+                model = cover,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SearchField(query: String, onQueryChange: (String) -> Unit, modifier: Modifier = Modifier) {
+    val keyboard = LocalSoftwareKeyboardController.current
+    OutlinedTextField(
+        value = query,
+        onValueChange = onQueryChange,
+        modifier = modifier,
+        placeholder = { Text(stringResource(R.string.search_documents)) },
+        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+        trailingIcon = {
+            if (query.isNotEmpty()) {
+                IconButton(onClick = { onQueryChange("") }) {
+                    Icon(Icons.Default.Clear, contentDescription = stringResource(R.string.clear_search))
+                }
+            }
+        },
+        singleLine = true,
+        shape = RoundedCornerShape(28.dp),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        keyboardActions = KeyboardActions(onSearch = { keyboard?.hide() }),
+    )
+}
+
+@Composable
+private fun NoResults(query: String) {
+    Text(
+        text = stringResource(R.string.no_search_results, query.trim()),
+        style = MaterialTheme.typography.bodyMedium,
+        color = NolvaTheme.colors.inkMuted,
+        textAlign = TextAlign.Center,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(32.dp),
+    )
 }
 
 @Composable
@@ -265,7 +355,7 @@ private fun DocumentMenu(onRename: () -> Unit, onDelete: () -> Unit) {
 @Composable
 private fun DocumentSummary(document: Document, modifier: Modifier = Modifier) {
     Column(
-        modifier = modifier.padding(start = 16.dp, top = 16.dp, bottom = 16.dp),
+        modifier = modifier.padding(start = 12.dp, top = 16.dp, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Text(

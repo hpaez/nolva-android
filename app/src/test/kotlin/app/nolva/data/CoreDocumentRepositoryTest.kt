@@ -41,6 +41,7 @@ class CoreDocumentRepositoryTest {
                 createdAtMs = 1_000,
                 updatedAtMs = 2_000,
                 pageCount = 0u,
+                coverPath = null,
             ).also { documents += it }
         }
 
@@ -73,7 +74,14 @@ class CoreDocumentRepositoryTest {
 
         override fun renameDocument(documentId: String, title: String): DocumentInfo {
             calls += "rename $documentId $title"
-            return DocumentInfo(documentId, title, createdAtMs = 1_000, updatedAtMs = 9_000, pageCount = 2u)
+            return DocumentInfo(
+                documentId,
+                title,
+                createdAtMs = 1_000,
+                updatedAtMs = 9_000,
+                pageCount = 2u,
+                coverPath = "/data/nolva/$documentId/cover.jpg",
+            )
         }
 
         override fun deleteDocument(documentId: String) {
@@ -120,6 +128,7 @@ class CoreDocumentRepositoryTest {
         assertEquals("Contract", created.title)
         assertEquals(Instant.ofEpochMilli(1_000), created.createdAt)
         assertEquals(Instant.ofEpochMilli(2_000), created.updatedAt)
+        assertEquals(null, created.coverFile)
         assertEquals(listOf(created), repository.listDocuments())
     }
 
@@ -187,6 +196,7 @@ class CoreDocumentRepositoryTest {
         val renamed = repository.renameDocument("doc-1", "Signed")
         assertEquals("Signed", renamed.title)
         assertEquals(Instant.ofEpochMilli(9_000), renamed.updatedAt)
+        assertEquals(File("/data/nolva/doc-1/cover.jpg"), renamed.coverFile)
 
         repository.deleteDocument("doc-1")
         repository.deletePage("page-3")

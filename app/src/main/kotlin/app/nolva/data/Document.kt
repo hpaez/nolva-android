@@ -13,6 +13,8 @@ data class Document(
     val createdAt: Instant,
     val updatedAt: Instant,
     val pageCount: Int,
+    /** First page's image (processed when it has one), for thumbnails. */
+    val coverFile: File? = null,
 )
 
 data class Page(

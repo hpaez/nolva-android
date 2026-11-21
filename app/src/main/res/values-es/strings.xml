@@ -86,4 +86,7 @@
     <string name="filter_black_and_white">Blanco y negro</string>
     <string name="filter_enhanced">Mejorado</string>
     <string name="error_apply_filter">No se pudo aplicar el filtro.</string>
+    <string name="search_documents">Buscar documentos</string>
+    <string name="clear_search">Borrar búsqueda</string>
+    <string name="no_search_results">Ningún documento coincide con «%1$s».</string>
 </resources>

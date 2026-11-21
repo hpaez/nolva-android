@@ -6,6 +6,8 @@ import app.nolva.data.Document
 import app.nolva.data.DocumentEditor
 import app.nolva.data.DocumentException
 import app.nolva.data.DocumentRepository
+import java.text.Normalizer
+import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,10 +18,24 @@ import kotlinx.coroutines.launch
 data class DocumentListUiState(
     val isLoading: Boolean = true,
     val documents: List<Document> = emptyList(),
+    /** Text typed in the search field; empty shows every document. */
+    val query: String = "",
     val isCreating: Boolean = false,
     /** One-shot message to show to the user; cleared with [DocumentListViewModel.messageShown]. */
     val message: DocumentListMessage? = null,
-)
+) {
+    /** Documents whose title contains [query], ignoring case and accents. */
+    val visibleDocuments: List<Document> by lazy {
+        val needle = query.searchKey()
+        if (needle.isEmpty()) documents else documents.filter { needle in it.title.searchKey() }
+    }
+}
+
+private val diacritics = Regex("\\p{Mn}+")
+
+/** Lowercase, trimmed and without accents, so "factura" finds "Factura Única". */
+internal fun String.searchKey(): String =
+    Normalizer.normalize(trim(), Normalizer.Form.NFD).replace(diacritics, "").lowercase(Locale.ROOT)
 
 enum class DocumentListMessage { LoadFailed, CreateFailed, InvalidTitle, RenameFailed, DeleteFailed }
 
@@ -102,6 +118,10 @@ class DocumentListViewModel(
                 }
             }
         }
+    }
+
+    fun search(query: String) {
+        _uiState.update { it.copy(query = query) }
     }
 
     fun messageShown() {
