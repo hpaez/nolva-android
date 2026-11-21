@@ -12,10 +12,13 @@ import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import app.nolva.di.AppContainer
+import app.nolva.ui.capture.CaptureRoute
+import app.nolva.ui.capture.CaptureViewModel
 import app.nolva.ui.document.DocumentDetailRoute
 import app.nolva.ui.document.DocumentDetailViewModel
 import app.nolva.ui.documents.DocumentListRoute
 import app.nolva.ui.documents.DocumentListViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.Serializable
 
 /** Back stack destinations. Serializable so the stack survives process death. */
@@ -24,6 +27,9 @@ data object DocumentListKey : NavKey
 
 @Serializable
 data class DocumentDetailKey(val documentId: String, val title: String) : NavKey
+
+@Serializable
+data class CaptureKey(val documentId: String) : NavKey
 
 @Composable
 fun NolvaNavigation(container: AppContainer, modifier: Modifier = Modifier) {
@@ -67,6 +73,24 @@ fun NolvaNavigation(container: AppContainer, modifier: Modifier = Modifier) {
                     ),
                     title = key.title,
                     onBack = { backStack.removeLastOrNull() },
+                    onScan = { backStack.add(CaptureKey(key.documentId)) },
+                )
+            }
+            entry<CaptureKey> { key ->
+                CaptureRoute(
+                    viewModel = viewModel(
+                        factory = viewModelFactory {
+                            initializer {
+                                CaptureViewModel(
+                                    documentId = key.documentId,
+                                    repository = container.documentRepository,
+                                    captureDir = container.captureDir,
+                                    ioDispatcher = Dispatchers.IO,
+                                )
+                            }
+                        },
+                    ),
+                    onDone = { backStack.removeLastOrNull() },
                 )
             }
         },
