@@ -38,6 +38,13 @@
     <string name="grant_permission">Permitir cámara</string>
     <string name="open_settings">Abrir ajustes</string>
 
+    <!-- PDF export -->
+    <string name="export_pdf">PDF</string>
+    <string name="paper_a4">A4</string>
+    <string name="paper_letter">Carta</string>
+    <string name="paper_legal">Oficio</string>
+    <string name="paper_fit_image">Tamaño de la imagen</string>
+
     <!-- Crop editor -->
     <string name="adjust_crop">Ajustar recorte</string>
     <string name="crop_title">Ajustar recorte</string>
@@ -53,6 +60,7 @@
     <string name="error_invalid_title">Ese título no es válido.</string>
     <string name="error_load_pages">No se pudieron cargar las páginas.</string>
     <string name="error_import_page">No se pudo agregar la imagen.</string>
+    <string name="error_export_pdf">No se pudo crear el PDF.</string>
     <string name="error_capture">No se pudo tomar la foto. Inténtalo de nuevo.</string>
     <string name="error_unsupported_image">Ese formato de imagen no es compatible.</string>
 </resources>

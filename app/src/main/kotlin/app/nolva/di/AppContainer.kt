@@ -8,6 +8,7 @@ import app.nolva.data.CoreDocumentRepository
 import app.nolva.data.DocumentRepository
 import app.nolva.data.PageCropper
 import app.nolva.data.PageImporter
+import app.nolva.data.PdfExporter
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -29,6 +30,11 @@ class AppContainer(context: Context) {
     val documentRepository: DocumentRepository get() = coreRepository
 
     val pageCropper: PageCropper get() = coreRepository
+
+    val pdfExporter: PdfExporter get() = coreRepository
+
+    /** Shareable exports; exposed to other apps through the FileProvider. */
+    val exportDir: File get() = File(appContext.cacheDir, "exports")
 
     val pageImporter: PageImporter by lazy {
         ContentPageImporter(
