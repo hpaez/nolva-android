@@ -81,4 +81,9 @@
     <string name="error_delete_document">No se pudo eliminar el documento.</string>
     <string name="error_delete_page">No se pudo eliminar la página.</string>
     <string name="error_move_page">No se pudo mover la página.</string>
+    <string name="filter_original">Original</string>
+    <string name="filter_grayscale">Grises</string>
+    <string name="filter_black_and_white">Blanco y negro</string>
+    <string name="filter_enhanced">Mejorado</string>
+    <string name="error_apply_filter">No se pudo aplicar el filtro.</string>
 </resources>

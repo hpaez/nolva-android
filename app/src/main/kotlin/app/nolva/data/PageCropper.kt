@@ -1,7 +1,7 @@
 package app.nolva.data
 
 /**
- * Detection and non-destructive cropping of pages. Kept separate from
+ * Detection, non-destructive cropping and filters of pages. Kept separate from
  * [DocumentRepository] so screens that only list documents don't depend on
  * image processing. All functions are main-safe but CPU-heavy (up to ~1 s
  * for a 12 MP photo).
@@ -20,4 +20,10 @@ interface PageCropper {
      *   valid outline (e.g. crossed).
      */
     suspend fun cropPage(pageId: String, corners: Corners): Page
+
+    /**
+     * Renders the page with [filter], on top of its crop if it has one.
+     * Filters start from the original, so they can be switched freely.
+     */
+    suspend fun applyFilter(pageId: String, filter: PageFilter): Page
 }

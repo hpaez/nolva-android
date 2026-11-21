@@ -27,9 +27,23 @@ data class Page(
     val processedFile: File? = null,
     /** Corners used for [processedFile], to reopen the crop editor. */
     val corners: Corners? = null,
+    /** Filter applied on top of the crop. */
+    val filter: PageFilter = PageFilter.Original,
 ) {
     /** What to show the user: the processed image when there is one. */
     val displayFile: File get() = processedFile ?: originalFile
+}
+
+/** Look applied to a page on top of its crop; always rendered from the original. */
+enum class PageFilter {
+    Original,
+    Grayscale,
+
+    /** Pure black ink on white paper: best for text. */
+    BlackAndWhite,
+
+    /** Evens out lighting and shadows, keeping colors. */
+    Enhanced,
 }
 
 /** A point in normalized coordinates (`0..1`) of the original image as displayed. */
