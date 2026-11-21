@@ -21,8 +21,19 @@
     <string name="create">Create</string>
     <string name="cancel">Cancel</string>
 
+    <!-- Document detail -->
+    <string name="back">Back</string>
+    <string name="add_from_gallery">Add from gallery</string>
+    <string name="no_pages_title">No pages yet</string>
+    <string name="no_pages_body">Add pages from your gallery. Scanning with the camera is coming next.</string>
+    <!-- %1$d: 1-based page number -->
+    <string name="page_number">Page %1$d</string>
+
     <!-- Errors -->
     <string name="error_load_documents">Couldn\'t load your documents.</string>
     <string name="error_create_document">Couldn\'t create the document.</string>
     <string name="error_invalid_title">That title isn\'t valid.</string>
+    <string name="error_load_pages">Couldn\'t load the pages.</string>
+    <string name="error_import_page">Couldn\'t add the image.</string>
+    <string name="error_unsupported_image">That image format isn\'t supported.</string>
 </resources>

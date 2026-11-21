@@ -29,13 +29,10 @@ class DocumentListViewModel(
     private val _uiState = MutableStateFlow(DocumentListUiState())
     val uiState: StateFlow<DocumentListUiState> = _uiState.asStateFlow()
 
-    init {
-        refresh()
-    }
-
     fun refresh() {
+        // The spinner only shows on the first load (initial state); later
+        // refreshes keep the current list visible while reloading.
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
             val result = runSuspendCatching { repository.listDocuments() }
             _uiState.update { state ->
                 result.fold(
