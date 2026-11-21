@@ -20,6 +20,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -45,6 +46,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -52,6 +54,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.nolva.R
 import app.nolva.data.Page
 import app.nolva.data.PageFilter
+import app.nolva.ui.share.shareFile
 import coil3.compose.AsyncImage
 
 private const val MAX_ZOOM = 5f
@@ -69,12 +72,25 @@ fun PageViewerRoute(
     // Reload when coming back from the crop editor.
     LaunchedEffect(viewModel) { viewModel.refresh() }
     val snackbarHostState = remember { SnackbarHostState() }
-    val filterError = stringResource(R.string.error_apply_filter)
-    LaunchedEffect(uiState.filterFailed) {
-        if (uiState.filterFailed) {
-            snackbarHostState.showSnackbar(filterError)
+    val messageText = uiState.message?.let {
+        stringResource(
+            when (it) {
+                PageViewerMessage.FilterFailed -> R.string.error_apply_filter
+                PageViewerMessage.ShareFailed -> R.string.error_share_page
+            },
+        )
+    }
+    LaunchedEffect(uiState.message) {
+        if (messageText != null) {
+            snackbarHostState.showSnackbar(messageText)
             viewModel.messageShown()
         }
+    }
+    val context = LocalContext.current
+    LaunchedEffect(uiState.pendingShare) {
+        val image = uiState.pendingShare ?: return@LaunchedEffect
+        shareFile(context, image, mimeType = "image/jpeg", subject = image.nameWithoutExtension)
+        viewModel.shareHandled()
     }
     Box(
         modifier = modifier
@@ -101,6 +117,7 @@ fun PageViewerRoute(
                 filteringPageId = uiState.filteringPageId,
                 onAdjustCrop = onAdjustCrop,
                 onApplyFilter = viewModel::applyFilter,
+                onShare = viewModel::sharePage,
             )
         }
 
@@ -131,6 +148,7 @@ private fun PagePager(
     filteringPageId: String?,
     onAdjustCrop: (String) -> Unit,
     onApplyFilter: (pageId: String, filter: PageFilter) -> Unit,
+    onShare: (pageId: String) -> Unit,
 ) {
     val pagerState = rememberPagerState(initialPage = initialPage) { pages.size }
     // Swiping between pages is disabled while the current page is zoomed in,
@@ -151,14 +169,19 @@ private fun PagePager(
             )
         }
 
-        TextButton(
-            onClick = { onAdjustCrop(pages[pagerState.currentPage].id) },
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .statusBarsPadding()
                 .padding(8.dp)
                 .align(Alignment.TopEnd),
         ) {
-            Text(stringResource(R.string.adjust_crop), color = Color.White)
+            IconButton(onClick = { onShare(pages[pagerState.currentPage].id) }) {
+                Icon(Icons.Default.Share, contentDescription = stringResource(R.string.share_page), tint = Color.White)
+            }
+            TextButton(onClick = { onAdjustCrop(pages[pagerState.currentPage].id) }) {
+                Text(stringResource(R.string.adjust_crop), color = Color.White)
+            }
         }
 
         val current = pages[pagerState.currentPage]

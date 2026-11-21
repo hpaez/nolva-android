@@ -36,7 +36,7 @@ data class DocumentDetailKey(val documentId: String, val title: String) : NavKey
 data class CaptureKey(val documentId: String) : NavKey
 
 @Serializable
-data class PageViewerKey(val documentId: String, val initialPage: Int) : NavKey
+data class PageViewerKey(val documentId: String, val title: String, val initialPage: Int) : NavKey
 
 @Serializable
 data class CropKey(val pageId: String) : NavKey
@@ -88,14 +88,23 @@ fun NolvaNavigation(container: AppContainer, modifier: Modifier = Modifier) {
                     title = key.title,
                     onBack = { backStack.removeLastOrNull() },
                     onScan = { backStack.add(CaptureKey(key.documentId)) },
-                    onOpenPage = { index -> backStack.add(PageViewerKey(key.documentId, index)) },
+                    onOpenPage = { index -> backStack.add(PageViewerKey(key.documentId, key.title, index)) },
                 )
             }
             entry<PageViewerKey> { key ->
                 PageViewerRoute(
                     viewModel = viewModel(
                         factory = viewModelFactory {
-                            initializer { PageViewerViewModel(key.documentId, container.documentRepository, container.pageCropper) }
+                            initializer {
+                                PageViewerViewModel(
+                                    documentId = key.documentId,
+                                    title = key.title,
+                                    repository = container.documentRepository,
+                                    cropper = container.pageCropper,
+                                    exportDir = container.exportDir,
+                                    ioDispatcher = Dispatchers.IO,
+                                )
+                            }
                         },
                     ),
                     initialPage = key.initialPage,

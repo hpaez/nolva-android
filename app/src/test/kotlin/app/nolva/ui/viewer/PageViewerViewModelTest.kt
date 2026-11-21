@@ -22,7 +22,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PageViewerViewModelTest {
@@ -61,8 +63,53 @@ class PageViewerViewModelTest {
         }
     }
 
-    private fun viewModel(pages: List<Page>, cropper: PageCropper = FakeCropper()) =
-        PageViewerViewModel("doc", FakeRepository(pages), cropper)
+    @get:Rule
+    val tempFolder = TemporaryFolder()
+
+    private fun viewModel(
+        pages: List<Page>,
+        cropper: PageCropper = FakeCropper(),
+        failure: Exception? = null,
+    ) = PageViewerViewModel(
+        documentId = "doc",
+        title = "Factura 3/2026",
+        repository = FakeRepository(pages, failure),
+        cropper = cropper,
+        exportDir = tempFolder.root.resolve("exports"),
+        ioDispatcher = dispatcher,
+    )
+
+    @Test
+    fun `shares a copy of the page named after the document`() = runTest(dispatcher) {
+        val image = tempFolder.newFile("processed.jpg").apply { writeText("jpeg") }
+        val pages = listOf(page("p0", 0), page("p1", 1).copy(processedFile = image))
+        val viewModel = viewModel(pages)
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        viewModel.sharePage("p1")
+        advanceUntilIdle()
+
+        val shared = viewModel.uiState.value.pendingShare!!
+        assertEquals("Factura 3_2026 - 2.jpg", shared.name)
+        assertEquals(tempFolder.root.resolve("exports"), shared.parentFile)
+        assertEquals("jpeg", shared.readText())
+        viewModel.shareHandled()
+        assertEquals(null, viewModel.uiState.value.pendingShare)
+    }
+
+    @Test
+    fun `reports share failures`() = runTest(dispatcher) {
+        val viewModel = viewModel(listOf(page("p0", 0)))  // its file doesn't exist
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        viewModel.sharePage("p0")
+        advanceUntilIdle()
+
+        assertEquals(PageViewerMessage.ShareFailed, viewModel.uiState.value.message)
+        assertEquals(null, viewModel.uiState.value.pendingShare)
+    }
 
     @Test
     fun `applying a filter replaces only that page`() = runTest(dispatcher) {
@@ -106,11 +153,11 @@ class PageViewerViewModelTest {
         advanceUntilIdle()
 
         val state = viewModel.uiState.value
-        assertTrue(state.filterFailed)
+        assertEquals(PageViewerMessage.FilterFailed, state.message)
         assertEquals(PageFilter.Original, state.pages.single().filter)
         assertEquals(null, state.filteringPageId)
         viewModel.messageShown()
-        assertFalse(viewModel.uiState.value.filterFailed)
+        assertEquals(null, viewModel.uiState.value.message)
     }
 
     @Test
@@ -127,8 +174,7 @@ class PageViewerViewModelTest {
 
     @Test
     fun `reports load failures`() = runTest(dispatcher) {
-        val viewModel =
-            PageViewerViewModel("doc", FakeRepository(emptyList(), DocumentException.Storage("io")), FakeCropper())
+        val viewModel = viewModel(emptyList(), failure = DocumentException.Storage("io"))
         viewModel.refresh()
         advanceUntilIdle()
 

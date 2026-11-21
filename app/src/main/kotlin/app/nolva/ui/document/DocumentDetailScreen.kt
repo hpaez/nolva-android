@@ -1,8 +1,5 @@
 package app.nolva.ui.document
 
-import android.content.ClipData
-import android.content.Context
-import android.content.Intent
 import android.content.res.Configuration
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -59,11 +56,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.nolva.R
 import app.nolva.data.Page
 import app.nolva.data.PaperSize
+import app.nolva.ui.share.shareFile
 import app.nolva.ui.theme.NolvaTheme
 import coil3.compose.AsyncImage
 import java.io.File
@@ -93,7 +90,7 @@ fun DocumentDetailRoute(
     val context = LocalContext.current
     LaunchedEffect(uiState.pendingShare) {
         val export = uiState.pendingShare ?: return@LaunchedEffect
-        sharePdf(context, export.file, title)
+        shareFile(context, export.file, mimeType = "application/pdf", subject = title)
         viewModel.shareHandled()
     }
 
@@ -112,23 +109,6 @@ fun DocumentDetailRoute(
         onMovePage = viewModel::movePage,
         modifier = modifier,
     )
-}
-
-/**
- * Opens the system share sheet for [pdf]. The file is exposed through the
- * app's FileProvider with a temporary read grant for the chosen app only.
- */
-private fun sharePdf(context: Context, pdf: File, title: String) {
-    val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", pdf)
-    val send = Intent(Intent.ACTION_SEND).apply {
-        type = "application/pdf"
-        putExtra(Intent.EXTRA_STREAM, uri)
-        putExtra(Intent.EXTRA_TITLE, pdf.name)
-        putExtra(Intent.EXTRA_SUBJECT, title)
-        clipData = ClipData.newRawUri(pdf.name, uri)
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    }
-    context.startActivity(Intent.createChooser(send, null))
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
