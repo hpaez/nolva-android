@@ -68,6 +68,27 @@ class CoreDocumentRepositoryTest {
             return pageInfo("doc-1").copy(processedPath = "/data/nolva/doc-1/processed.jpg", corners = corners)
         }
 
+        val calls = mutableListOf<String>()
+
+        override fun renameDocument(documentId: String, title: String): DocumentInfo {
+            calls += "rename $documentId $title"
+            return DocumentInfo(documentId, title, createdAtMs = 1_000, updatedAtMs = 9_000, pageCount = 2u)
+        }
+
+        override fun deleteDocument(documentId: String) {
+            calls += "deleteDocument $documentId"
+        }
+
+        override fun deletePage(pageId: String) {
+            failure?.let { throw it }
+            calls += "deletePage $pageId"
+        }
+
+        override fun movePage(pageId: String, toPosition: UInt): List<PageInfo> {
+            calls += "move $pageId $toPosition"
+            return listOf(pageInfo("doc-1").copy(id = pageId, position = 0u))
+        }
+
         private fun pageInfo(documentId: String) = PageInfo(
             id = "page-0",
             documentId = documentId,
@@ -147,6 +168,39 @@ class CoreDocumentRepositoryTest {
 
         assertEquals(CorePaperSize.LEGAL, core.exportedWith?.paperSize)
         assertEquals(PdfExport(File("/cache/exports/a.pdf"), pageCount = 2, sizeBytes = 1234), export)
+    }
+
+    @Test
+    fun `forwards edits to the core`() = runTest(dispatcher) {
+        val core = FakeCore()
+        val repository = CoreDocumentRepository(dispatcher) { core }
+
+        val renamed = repository.renameDocument("doc-1", "Signed")
+        assertEquals("Signed", renamed.title)
+        assertEquals(Instant.ofEpochMilli(9_000), renamed.updatedAt)
+
+        repository.deleteDocument("doc-1")
+        repository.deletePage("page-3")
+        val order = repository.movePage("page-3", -1)
+
+        assertEquals(listOf("page-3"), order.map { it.id })
+        assertEquals(
+            listOf("rename doc-1 Signed", "deleteDocument doc-1", "deletePage page-3", "move page-3 0"),
+            core.calls,
+        )
+    }
+
+    @Test
+    fun `edit errors are translated too`() = runTest(dispatcher) {
+        val core = FakeCore().apply { failure = NolvaException.NotFound("page") }
+        val repository = CoreDocumentRepository(dispatcher) { core }
+
+        try {
+            repository.deletePage("gone")
+            fail("expected DocumentException.NotFound")
+        } catch (e: DocumentException.NotFound) {
+            assertEquals("page", e.message)
+        }
     }
 
     @Test

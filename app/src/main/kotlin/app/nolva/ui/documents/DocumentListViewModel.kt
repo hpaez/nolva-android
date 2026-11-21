@@ -3,6 +3,7 @@ package app.nolva.ui.documents
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.nolva.data.Document
+import app.nolva.data.DocumentEditor
 import app.nolva.data.DocumentException
 import app.nolva.data.DocumentRepository
 import kotlinx.coroutines.CancellationException
@@ -20,10 +21,11 @@ data class DocumentListUiState(
     val message: DocumentListMessage? = null,
 )
 
-enum class DocumentListMessage { LoadFailed, CreateFailed, InvalidTitle }
+enum class DocumentListMessage { LoadFailed, CreateFailed, InvalidTitle, RenameFailed, DeleteFailed }
 
 class DocumentListViewModel(
     private val repository: DocumentRepository,
+    private val editor: DocumentEditor,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DocumentListUiState())
@@ -62,6 +64,43 @@ class DocumentListViewModel(
                     _uiState.update { it.copy(isCreating = false, message = message) }
                 },
             )
+        }
+    }
+
+    fun renameDocument(documentId: String, title: String) {
+        viewModelScope.launch {
+            val result = runSuspendCatching { editor.renameDocument(documentId, title) }
+            result.fold(
+                onSuccess = { renamed ->
+                    // Renaming touches the document, so it becomes the most recent.
+                    _uiState.update { state ->
+                        state.copy(documents = listOf(renamed) + state.documents.filterNot { it.id == renamed.id })
+                    }
+                },
+                onFailure = { error ->
+                    val message = if (error is DocumentException.InvalidInput) {
+                        DocumentListMessage.InvalidTitle
+                    } else {
+                        DocumentListMessage.RenameFailed
+                    }
+                    _uiState.update { it.copy(message = message) }
+                },
+            )
+        }
+    }
+
+    /** Permanently deletes a document and its pages. */
+    fun deleteDocument(documentId: String) {
+        viewModelScope.launch {
+            val result = runSuspendCatching { editor.deleteDocument(documentId) }
+            _uiState.update { state ->
+                // Already gone (e.g. deleted twice) counts as done.
+                if (result.isSuccess || result.exceptionOrNull() is DocumentException.NotFound) {
+                    state.copy(documents = state.documents.filterNot { it.id == documentId })
+                } else {
+                    state.copy(message = DocumentListMessage.DeleteFailed)
+                }
+            }
         }
     }
 

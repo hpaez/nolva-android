@@ -5,6 +5,7 @@ import app.nolva.core.CoreConfig
 import app.nolva.core.NolvaCore
 import app.nolva.data.ContentPageImporter
 import app.nolva.data.CoreDocumentRepository
+import app.nolva.data.DocumentEditor
 import app.nolva.data.DocumentRepository
 import app.nolva.data.PageCropper
 import app.nolva.data.PageImporter
@@ -28,6 +29,8 @@ class AppContainer(context: Context) {
     }
 
     val documentRepository: DocumentRepository get() = coreRepository
+
+    val documentEditor: DocumentEditor get() = coreRepository
 
     val pageCropper: PageCropper get() = coreRepository
 

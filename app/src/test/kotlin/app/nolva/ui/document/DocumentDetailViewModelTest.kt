@@ -1,6 +1,7 @@
 package app.nolva.ui.document
 
 import app.nolva.data.Document
+import app.nolva.data.DocumentEditor
 import app.nolva.data.DocumentException
 import app.nolva.data.DocumentRepository
 import app.nolva.data.Page
@@ -43,6 +44,27 @@ class DocumentDetailViewModelTest {
         override suspend fun listPages(documentId: String): List<Page> = pages
     }
 
+    /** Keeps an ordered list of pages, like the core. */
+    private class FakeEditor(ids: List<String> = emptyList()) : DocumentEditor {
+        val order = ids.toMutableList()
+        var failure: Exception? = null
+
+        override suspend fun renameDocument(documentId: String, title: String): Document = error("unused")
+        override suspend fun deleteDocument(documentId: String) = error("unused")
+
+        override suspend fun deletePage(pageId: String) {
+            failure?.let { throw it }
+            order.remove(pageId)
+        }
+
+        override suspend fun movePage(pageId: String, toPosition: Int): List<Page> {
+            failure?.let { throw it }
+            order.remove(pageId)
+            order.add(toPosition.coerceIn(0, order.size), pageId)
+            return order.mapIndexed { index, id -> page(id, index) }
+        }
+    }
+
     /** Imports succeed with increasing positions, except URIs listed in [failures]. */
     private class FakeImporter(private val failures: Map<String, Exception> = emptyMap()) : PageImporter {
         val imported = mutableListOf<String>()
@@ -73,7 +95,67 @@ class DocumentDetailViewModelTest {
         repository: DocumentRepository,
         importer: PageImporter,
         exporter: PdfExporter = FakeExporter(),
-    ) = DocumentDetailViewModel("doc", repository, importer, exporter, tempFolder.root.resolve("exports"), dispatcher)
+        editor: DocumentEditor = FakeEditor(),
+    ) = DocumentDetailViewModel(
+        "doc",
+        repository,
+        editor,
+        importer,
+        exporter,
+        tempFolder.root.resolve("exports"),
+        dispatcher,
+    )
+
+    @Test
+    fun `deleting a page renumbers the rest`() = runTest(dispatcher) {
+        val pages = listOf(page("a", 0), page("b", 1), page("c", 2))
+        val viewModel = viewModel(FakeRepository(pages), FakeImporter(), editor = FakeEditor(listOf("a", "b", "c")))
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        viewModel.deletePage("a")
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(listOf("b", "c"), state.pages.map { it.id })
+        assertEquals(listOf(0, 1), state.pages.map { it.position })
+    }
+
+    @Test
+    fun `moves apply in the order they were requested`() = runTest(dispatcher) {
+        val pages = listOf(page("a", 0), page("b", 1), page("c", 2))
+        val viewModel = viewModel(FakeRepository(pages), FakeImporter(), editor = FakeEditor(listOf("a", "b", "c")))
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        viewModel.movePage("c", 1)
+        viewModel.movePage("c", 0)
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(listOf("c", "a", "b"), state.pages.map { it.id })
+        assertEquals(listOf(0, 1, 2), state.pages.map { it.position })
+    }
+
+    @Test
+    fun `failed edits keep the pages and report`() = runTest(dispatcher) {
+        val pages = listOf(page("a", 0), page("b", 1))
+        val editor = FakeEditor(listOf("a", "b")).apply { failure = DocumentException.Storage("disk") }
+        val viewModel = viewModel(FakeRepository(pages), FakeImporter(), editor = editor)
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        viewModel.deletePage("a")
+        advanceUntilIdle()
+        assertEquals(DocumentDetailMessage.DeletePageFailed, viewModel.uiState.value.message)
+        viewModel.messageShown()
+
+        viewModel.movePage("b", 0)
+        advanceUntilIdle()
+        val state = viewModel.uiState.value
+        assertEquals(DocumentDetailMessage.MovePageFailed, state.message)
+        assertEquals(listOf("a", "b"), state.pages.map { it.id })
+    }
 
     @Test
     fun `exports a pdf named after the document and queues it for sharing`() = runTest(dispatcher) {

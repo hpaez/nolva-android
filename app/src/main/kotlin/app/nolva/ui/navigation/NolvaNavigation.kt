@@ -60,7 +60,7 @@ fun NolvaNavigation(container: AppContainer, modifier: Modifier = Modifier) {
                 DocumentListRoute(
                     viewModel = viewModel(
                         factory = viewModelFactory {
-                            initializer { DocumentListViewModel(container.documentRepository) }
+                            initializer { DocumentListViewModel(container.documentRepository, container.documentEditor) }
                         },
                     ),
                     onOpenDocument = { document ->
@@ -76,6 +76,7 @@ fun NolvaNavigation(container: AppContainer, modifier: Modifier = Modifier) {
                                 DocumentDetailViewModel(
                                     documentId = key.documentId,
                                     repository = container.documentRepository,
+                                    editor = container.documentEditor,
                                     importer = container.pageImporter,
                                     exporter = container.pdfExporter,
                                     exportDir = container.exportDir,

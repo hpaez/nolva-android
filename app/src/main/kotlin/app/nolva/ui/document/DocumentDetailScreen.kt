@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,6 +21,8 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -41,6 +44,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -98,6 +102,8 @@ fun DocumentDetailRoute(
         },
         onMessageShown = viewModel::messageShown,
         onExportPdf = { paperSize -> viewModel.exportPdf(title, paperSize) },
+        onDeletePage = viewModel::deletePage,
+        onMovePage = viewModel::movePage,
         modifier = modifier,
     )
 }
@@ -131,8 +137,11 @@ fun DocumentDetailScreen(
     modifier: Modifier = Modifier,
     onOpenPage: (Int) -> Unit = {},
     onExportPdf: (PaperSize) -> Unit = {},
+    onDeletePage: (pageId: String) -> Unit = {},
+    onMovePage: (pageId: String, toPosition: Int) -> Unit = { _, _ -> },
 ) {
     var showPaperMenu by remember { mutableStateOf(false) }
+    var deletingPageId by rememberSaveable { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     val messageText = uiState.message?.let { stringResource(it.textRes()) }
     LaunchedEffect(uiState.message) {
@@ -206,13 +215,50 @@ fun DocumentDetailScreen(
 
             uiState.pages.isEmpty() && !uiState.isImporting -> EmptyPages(Modifier.padding(innerPadding))
 
-            else -> PageGrid(pages = uiState.pages, contentPadding = innerPadding, onOpenPage = onOpenPage)
+            else -> PageGrid(
+                pages = uiState.pages,
+                contentPadding = innerPadding,
+                // Imports append pages while running; editing at the same
+                // time could leave the grid out of step with storage.
+                editable = !uiState.isImporting,
+                onOpenPage = onOpenPage,
+                onMovePage = onMovePage,
+                onDeletePage = { deletingPageId = it },
+            )
         }
+    }
+
+    uiState.pages.find { it.id == deletingPageId }?.let { page ->
+        AlertDialog(
+            onDismissRequest = { deletingPageId = null },
+            title = { Text(stringResource(R.string.delete_page_title, page.position + 1)) },
+            text = { Text(stringResource(R.string.delete_page_body)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        deletingPageId = null
+                        onDeletePage(page.id)
+                    },
+                ) {
+                    Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deletingPageId = null }) { Text(stringResource(R.string.cancel)) }
+            },
+        )
     }
 }
 
 @Composable
-private fun PageGrid(pages: List<Page>, contentPadding: PaddingValues, onOpenPage: (Int) -> Unit) {
+private fun PageGrid(
+    pages: List<Page>,
+    contentPadding: PaddingValues,
+    editable: Boolean,
+    onOpenPage: (Int) -> Unit,
+    onMovePage: (pageId: String, toPosition: Int) -> Unit,
+    onDeletePage: (pageId: String) -> Unit,
+) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 140.dp),
         modifier = Modifier.fillMaxSize(),
@@ -226,14 +272,33 @@ private fun PageGrid(pages: List<Page>, contentPadding: PaddingValues, onOpenPag
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         itemsIndexed(pages, key = { _, page -> page.id }) { index, page ->
-            PageThumbnail(page, onClick = { onOpenPage(index) })
+            PageThumbnail(
+                page = page,
+                canMoveEarlier = editable && index > 0,
+                canMoveLater = editable && index < pages.lastIndex,
+                editable = editable,
+                onClick = { onOpenPage(index) },
+                onMoveEarlier = { onMovePage(page.id, index - 1) },
+                onMoveLater = { onMovePage(page.id, index + 1) },
+                onDelete = { onDeletePage(page.id) },
+            )
         }
     }
 }
 
 @Composable
-private fun PageThumbnail(page: Page, onClick: () -> Unit) {
+private fun PageThumbnail(
+    page: Page,
+    canMoveEarlier: Boolean,
+    canMoveLater: Boolean,
+    editable: Boolean,
+    onClick: () -> Unit,
+    onMoveEarlier: () -> Unit,
+    onMoveLater: () -> Unit,
+    onDelete: () -> Unit,
+) {
     val pageNumber = page.position + 1
+    var showMenu by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         OutlinedCard(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
             // Coil downsamples to the displayed size, so full-resolution
@@ -247,13 +312,46 @@ private fun PageThumbnail(page: Page, onClick: () -> Unit) {
                     .aspectRatio(3f / 4f),
             )
         }
-        Text(
-            text = stringResource(R.string.page_number, pageNumber),
-            style = MaterialTheme.typography.labelMedium,
-            color = NolvaTheme.colors.inkMuted,
-            modifier = Modifier.fillMaxWidth(),
-            textAlign = TextAlign.Center,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = stringResource(R.string.page_number, pageNumber),
+                style = MaterialTheme.typography.labelMedium,
+                color = NolvaTheme.colors.inkMuted,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 4.dp),
+            )
+            Box {
+                IconButton(onClick = { showMenu = true }, enabled = editable) {
+                    Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.page_options, pageNumber))
+                }
+                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.move_page_earlier)) },
+                        enabled = canMoveEarlier,
+                        onClick = {
+                            showMenu = false
+                            onMoveEarlier()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.move_page_later)) },
+                        enabled = canMoveLater,
+                        onClick = {
+                            showMenu = false
+                            onMoveLater()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) },
+                        onClick = {
+                            showMenu = false
+                            onDelete()
+                        },
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -285,6 +383,8 @@ private fun DocumentDetailMessage.textRes(): Int = when (this) {
     DocumentDetailMessage.ImportFailed -> R.string.error_import_page
     DocumentDetailMessage.UnsupportedImage -> R.string.error_unsupported_image
     DocumentDetailMessage.ExportFailed -> R.string.error_export_pdf
+    DocumentDetailMessage.DeletePageFailed -> R.string.error_delete_page
+    DocumentDetailMessage.MovePageFailed -> R.string.error_move_page
 }
 
 private fun PaperSize.labelRes(): Int = when (this) {

@@ -2,6 +2,7 @@ package app.nolva.ui.document
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.nolva.data.DocumentEditor
 import app.nolva.data.DocumentException
 import app.nolva.data.DocumentRepository
 import app.nolva.data.Page
@@ -18,6 +19,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 data class DocumentDetailUiState(
@@ -33,7 +36,14 @@ data class DocumentDetailUiState(
     val isImporting: Boolean get() = pendingImports > 0
 }
 
-enum class DocumentDetailMessage { LoadFailed, ImportFailed, UnsupportedImage, ExportFailed }
+enum class DocumentDetailMessage {
+    LoadFailed,
+    ImportFailed,
+    UnsupportedImage,
+    ExportFailed,
+    DeletePageFailed,
+    MovePageFailed,
+}
 
 /** Exports older than this are deleted before a new export. */
 private const val EXPORT_MAX_AGE_MS = 24L * 60 * 60 * 1000
@@ -41,6 +51,7 @@ private const val EXPORT_MAX_AGE_MS = 24L * 60 * 60 * 1000
 class DocumentDetailViewModel(
     private val documentId: String,
     private val repository: DocumentRepository,
+    private val editor: DocumentEditor,
     private val importer: PageImporter,
     private val exporter: PdfExporter,
     private val exportDir: File,
@@ -49,6 +60,12 @@ class DocumentDetailViewModel(
 
     private val _uiState = MutableStateFlow(DocumentDetailUiState())
     val uiState: StateFlow<DocumentDetailUiState> = _uiState.asStateFlow()
+
+    /**
+     * Serializes page edits: each move returns the full new order, so two
+     * overlapping moves could otherwise apply their results out of order.
+     */
+    private val editMutex = Mutex()
 
     /** Reloads the pages, e.g. when coming back from the camera. */
     fun refresh() {
@@ -87,6 +104,35 @@ class DocumentDetailViewModel(
                         },
                     )
                 }
+            }
+        }
+    }
+
+    /** Permanently deletes a page; the following pages move up. */
+    fun deletePage(pageId: String) {
+        viewModelScope.launch {
+            val result = editMutex.withLock { runSuspendCatching { editor.deletePage(pageId) } }
+            _uiState.update { state ->
+                result.fold(
+                    onSuccess = {
+                        val remaining = state.pages.filterNot { it.id == pageId }
+                        state.copy(pages = remaining.mapIndexed { index, page -> page.copy(position = index) })
+                    },
+                    onFailure = { state.copy(message = DocumentDetailMessage.DeletePageFailed) },
+                )
+            }
+        }
+    }
+
+    /** Moves a page to [toPosition] (zero-based). */
+    fun movePage(pageId: String, toPosition: Int) {
+        viewModelScope.launch {
+            val result = editMutex.withLock { runSuspendCatching { editor.movePage(pageId, toPosition) } }
+            _uiState.update { state ->
+                result.fold(
+                    onSuccess = { state.copy(pages = it) },
+                    onFailure = { state.copy(message = DocumentDetailMessage.MovePageFailed) },
+                )
             }
         }
     }

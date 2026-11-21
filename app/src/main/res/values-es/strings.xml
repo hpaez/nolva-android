@@ -63,4 +63,22 @@
     <string name="error_export_pdf">No se pudo crear el PDF.</string>
     <string name="error_capture">No se pudo tomar la foto. Inténtalo de nuevo.</string>
     <string name="error_unsupported_image">Ese formato de imagen no es compatible.</string>
+
+    <!-- Rename, delete and reorder -->
+    <string name="more_options">Más opciones</string>
+    <string name="page_options">Opciones de la página %1$d</string>
+    <string name="rename">Cambiar nombre</string>
+    <string name="delete">Eliminar</string>
+    <string name="save">Guardar</string>
+    <string name="rename_document">Cambiar nombre del documento</string>
+    <string name="delete_document_title">¿Eliminar documento?</string>
+    <string name="delete_document_body">«%1$s» y todas sus páginas se eliminarán de forma permanente. No se puede deshacer.</string>
+    <string name="delete_page_title">¿Eliminar la página %1$d?</string>
+    <string name="delete_page_body">La página se eliminará de forma permanente. No se puede deshacer.</string>
+    <string name="move_page_earlier">Mover antes</string>
+    <string name="move_page_later">Mover después</string>
+    <string name="error_rename_document">No se pudo cambiar el nombre del documento.</string>
+    <string name="error_delete_document">No se pudo eliminar el documento.</string>
+    <string name="error_delete_page">No se pudo eliminar la página.</string>
+    <string name="error_move_page">No se pudo mover la página.</string>
 </resources>
