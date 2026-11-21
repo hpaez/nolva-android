@@ -1,0 +1,23 @@
+<resources>
+    <!-- Document list -->
+    <string name="new_document">Nuevo documento</string>
+    <string name="empty_title">Aún no tienes documentos</string>
+    <string name="empty_body">Crea tu primer documento para empezar a escanear.</string>
+    <string name="document_subtitle">%1$s · %2$s</string>
+    <plurals name="page_count">
+        <item quantity="one">%d página</item>
+        <item quantity="many">%d páginas</item>
+        <item quantity="other">%d páginas</item>
+    </plurals>
+
+    <!-- Create document dialog -->
+    <string name="document_title_label">Título</string>
+    <string name="default_document_title">Escaneo %1$s</string>
+    <string name="create">Crear</string>
+    <string name="cancel">Cancelar</string>
+
+    <!-- Errors -->
+    <string name="error_load_documents">No se pudieron cargar tus documentos.</string>
+    <string name="error_create_document">No se pudo crear el documento.</string>
+    <string name="error_invalid_title">Ese título no es válido.</string>
+</resources>

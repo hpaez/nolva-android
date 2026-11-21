@@ -1,7 +1,28 @@
 <resources>
-    <string name="app_name">Nolva</string>
+    <string name="app_name" translatable="false">Nolva</string>
     <!-- Brand wordmark: always lowercase, never translated. -->
     <string name="wordmark" translatable="false">nolva</string>
-    <string name="tagline">Your documents, in order.</string>
-    <string name="core_version" translatable="false">core v%1$s</string>
+
+    <!-- Document list -->
+    <string name="new_document">New document</string>
+    <string name="empty_title">No documents yet</string>
+    <string name="empty_body">Create your first document to start scanning.</string>
+    <!-- %1$s: page count (e.g. "3 pages"), %2$s: last updated date -->
+    <string name="document_subtitle">%1$s · %2$s</string>
+    <plurals name="page_count">
+        <item quantity="one">%d page</item>
+        <item quantity="other">%d pages</item>
+    </plurals>
+
+    <!-- Create document dialog -->
+    <string name="document_title_label">Title</string>
+    <!-- %1$s: today's date -->
+    <string name="default_document_title">Scan %1$s</string>
+    <string name="create">Create</string>
+    <string name="cancel">Cancel</string>
+
+    <!-- Errors -->
+    <string name="error_load_documents">Couldn\'t load your documents.</string>
+    <string name="error_create_document">Couldn\'t create the document.</string>
+    <string name="error_invalid_title">That title isn\'t valid.</string>
 </resources>
