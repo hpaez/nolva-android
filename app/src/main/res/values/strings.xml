@@ -41,6 +41,14 @@
     <string name="close">Close</string>
     <string name="done">Done</string>
     <string name="take_photo">Take photo</string>
+    <string name="flash_off">Flash off</string>
+    <string name="flash_auto">Flash auto</string>
+    <string name="flash_on">Flash on</string>
+    <string name="auto_capture_on">Auto: on</string>
+    <string name="auto_capture_off">Auto: off</string>
+    <string name="capture_hint_find">Point at a document</string>
+    <string name="capture_hint_found">Document found</string>
+    <string name="capture_hint_hold">Hold still…</string>
     <string name="review_last_page">Review the last page</string>
     <string name="keep">Keep</string>
     <string name="discard">Discard</string>

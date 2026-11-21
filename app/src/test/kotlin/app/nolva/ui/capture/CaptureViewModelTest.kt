@@ -6,9 +6,11 @@ import app.nolva.data.Document
 import app.nolva.data.DocumentEditor
 import app.nolva.data.DocumentException
 import app.nolva.data.DocumentRepository
+import app.nolva.data.LumaFrame
 import app.nolva.data.Page
 import app.nolva.data.PageCropper
 import app.nolva.data.PageFilter
+import app.nolva.data.SheetDetector
 import java.io.File
 import java.time.Instant
 import kotlinx.coroutines.Dispatchers
@@ -21,6 +23,9 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertNotNull
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -91,7 +96,52 @@ class CaptureViewModelTest {
         repository: DocumentRepository,
         cropper: PageCropper = FakeCropper(confidence = null),
         editor: DocumentEditor = FakeEditor(),
-    ) = CaptureViewModel("doc", repository, cropper, editor, tempFolder.newFolder(), dispatcher)
+        detector: SheetDetector = SheetDetector { null },
+    ) = CaptureViewModel("doc", repository, cropper, editor, detector, tempFolder.newFolder(), dispatcher)
+
+    private fun frame() = LumaFrame(width = 640, height = 480, rowStride = 640, luma = ByteArray(640 * 480), rotationDegrees = 90)
+
+    @Test
+    fun `a sheet held still requests a photo until handled`() = runTest(dispatcher) {
+        val sheet = CornerDetection(Corners.FULL, 0.95f)
+        val viewModel = viewModel(FakeRepository(), detector = { sheet })
+
+        for (t in 0..10) viewModel.analyzeFrame(frame(), nowMs = t * 100L)
+
+        val state = viewModel.uiState.value
+        assertTrue(state.autoShutter)
+        assertEquals(0.75f, state.guide!!.frameAspect, 0.001f)
+        viewModel.autoShutterHandled()
+        assertFalse(viewModel.uiState.value.autoShutter)
+    }
+
+    @Test
+    fun `with auto capture off the guide shows but no photo is requested`() = runTest(dispatcher) {
+        val viewModel = viewModel(FakeRepository(), detector = { CornerDetection(Corners.FULL, 0.95f) })
+        viewModel.toggleAutoCapture()
+
+        for (t in 0..20) viewModel.analyzeFrame(frame(), nowMs = t * 100L)
+
+        assertFalse(viewModel.uiState.value.autoShutter)
+        assertNotNull(viewModel.uiState.value.guide)
+    }
+
+    @Test
+    fun `detector failures just hide the guide`() = runTest(dispatcher) {
+        val viewModel = viewModel(FakeRepository(), detector = { error("native crash") })
+        viewModel.analyzeFrame(frame(), nowMs = 0)
+        assertNull(viewModel.uiState.value.guide)
+    }
+
+    @Test
+    fun `flash cycles through off, auto and on`() = runTest(dispatcher) {
+        val viewModel = viewModel(FakeRepository())
+        assertEquals(FlashMode.Auto, viewModel.uiState.value.flash)
+        viewModel.cycleFlash()
+        assertEquals(FlashMode.On, viewModel.uiState.value.flash)
+        viewModel.cycleFlash()
+        assertEquals(FlashMode.Off, viewModel.uiState.value.flash)
+    }
 
     @Test
     fun `keeps the captured pages as stored, cropped when possible`() = runTest(dispatcher) {
