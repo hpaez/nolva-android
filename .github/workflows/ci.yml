@@ -2,10 +2,8 @@ name: CI
 
 on:
   pull_request:
-    paths-ignore: ["**.md"]
   push:
     branches: [main]
-    paths-ignore: ["**.md"]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -19,8 +17,32 @@ permissions:
   packages: read
 
 jobs:
+  changes:
+    name: detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      # paths-filter lists a PR's changed files through the API.
+      pull-requests: read
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          # A file counts as code unless it matches every exclusion below.
+          predicate-quantifier: every
+          filters: |
+            code:
+              - '**'
+              - '!**/*.md'
+
   build:
     name: build · lint · unit tests
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -42,3 +64,22 @@ jobs:
         with:
           name: lint-report
           path: app/build/reports/lint-results-debug.html
+
+  # The only check required by branch protection. It always runs and fails
+  # if any job failed or was cancelled; skipped jobs (docs-only changes)
+  # count as success. Required checks then never get stuck waiting for jobs
+  # that were skipped, and renaming jobs doesn't touch protection settings.
+  result:
+    name: CI result
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [changes, build]
+    if: always()
+    steps:
+      - name: Check job results
+        run: |
+          echo '${{ toJSON(needs) }}'
+          if [[ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "::error::A required job failed or was cancelled."
+            exit 1
+          fi
