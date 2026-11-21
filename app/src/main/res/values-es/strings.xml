@@ -91,4 +91,7 @@
     <string name="no_search_results">Ningún documento coincide con «%1$s».</string>
     <string name="share_page">Compartir página</string>
     <string name="error_share_page">No se pudo compartir la página.</string>
+    <string name="review_last_page">Revisar la última página</string>
+    <string name="keep">Conservar</string>
+    <string name="discard">Descartar</string>
 </resources>

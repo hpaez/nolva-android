@@ -41,6 +41,9 @@
     <string name="close">Close</string>
     <string name="done">Done</string>
     <string name="take_photo">Take photo</string>
+    <string name="review_last_page">Review the last page</string>
+    <string name="keep">Keep</string>
+    <string name="discard">Discard</string>
     <plurals name="pages_captured">
         <item quantity="one">%d page added</item>
         <item quantity="other">%d pages added</item>

@@ -2,7 +2,10 @@ package app.nolva.ui.capture
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.nolva.data.DocumentEditor
+import app.nolva.data.DocumentException
 import app.nolva.data.DocumentRepository
+import app.nolva.data.Page
 import app.nolva.data.PageCropper
 import java.io.File
 import java.util.UUID
@@ -17,16 +20,17 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 data class CaptureUiState(
-    /** Pages successfully added to the document in this session. */
-    val capturedCount: Int = 0,
+    /** Pages added to the document in this session, as stored (auto-cropped when possible). */
+    val captured: List<Page> = emptyList(),
     /** Captures taken but not yet stored by the core. */
     val pendingSaves: Int = 0,
     val message: CaptureMessage? = null,
 ) {
     val isSaving: Boolean get() = pendingSaves > 0
+    val capturedCount: Int get() = captured.size
 }
 
-enum class CaptureMessage { CaptureFailed, SaveFailed }
+enum class CaptureMessage { CaptureFailed, SaveFailed, DiscardFailed }
 
 /** Minimum detection confidence to crop automatically after a capture. */
 internal const val AUTO_CROP_MIN_CONFIDENCE = 0.6f
@@ -47,6 +51,7 @@ class CaptureViewModel(
     private val documentId: String,
     private val repository: DocumentRepository,
     private val cropper: PageCropper,
+    private val editor: DocumentEditor,
     private val captureDir: File,
     private val ioDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
@@ -63,14 +68,13 @@ class CaptureViewModel(
     fun onPictureTaken(file: File) {
         _uiState.update { it.copy(pendingSaves = it.pendingSaves + 1) }
         viewModelScope.launch {
-            val saved = try {
+            val saved: Page? = try {
                 val page = repository.addPage(documentId, file)
-                autoCrop(page.id)
-                true
+                autoCrop(page.id) ?: page
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                false
+                null
             } finally {
                 // Delete the temp file even if the screen is closed meanwhile.
                 withContext(NonCancellable + ioDispatcher) { file.delete() }
@@ -78,23 +82,48 @@ class CaptureViewModel(
             _uiState.update { state ->
                 state.copy(
                     pendingSaves = state.pendingSaves - 1,
-                    capturedCount = if (saved) state.capturedCount + 1 else state.capturedCount,
-                    message = if (saved) state.message else CaptureMessage.SaveFailed,
+                    captured = if (saved != null) state.captured + saved else state.captured,
+                    message = if (saved != null) state.message else CaptureMessage.SaveFailed,
                 )
             }
         }
     }
 
-    private suspend fun autoCrop(pageId: String) {
-        try {
-            val detection = cropper.detectCorners(pageId) ?: return
-            if (detection.confidence >= AUTO_CROP_MIN_CONFIDENCE) {
-                cropper.cropPage(pageId, detection.corners)
+    /** @return the cropped page, or `null` if it was left as photographed. */
+    private suspend fun autoCrop(pageId: String): Page? = try {
+        val detection = cropper.detectCorners(pageId)
+        if (detection != null && detection.confidence >= AUTO_CROP_MIN_CONFIDENCE) {
+            cropper.cropPage(pageId, detection.corners)
+        } else {
+            null
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        // Keep the original photo; the page is already saved.
+        null
+    }
+
+    /** Deletes a page captured in this session, e.g. a blurry shot to retake. */
+    fun discard(pageId: String) {
+        viewModelScope.launch {
+            val failed = try {
+                editor.deletePage(pageId)
+                false
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: DocumentException.NotFound) {
+                false // Already gone: nothing left to discard.
+            } catch (e: Exception) {
+                true
             }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            // Keep the original photo; the page is already saved.
+            _uiState.update { state ->
+                if (failed) {
+                    state.copy(message = CaptureMessage.DiscardFailed)
+                } else {
+                    state.copy(captured = state.captured.filterNot { it.id == pageId })
+                }
+            }
         }
     }
 
