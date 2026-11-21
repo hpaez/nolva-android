@@ -13,6 +13,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -25,16 +27,20 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val container = (application as NolvaApplication).container
         setContent {
             NolvaTheme {
-                NolvaApp()
+                val coreVersion by produceState<String?>(initialValue = null) {
+                    value = runCatching { container.coreVersion() }.getOrNull()
+                }
+                NolvaApp(coreVersion = coreVersion)
             }
         }
     }
 }
 
 @Composable
-fun NolvaApp(modifier: Modifier = Modifier) {
+fun NolvaApp(coreVersion: String?, modifier: Modifier = Modifier) {
     Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
         Column(
             modifier = Modifier
@@ -53,6 +59,13 @@ fun NolvaApp(modifier: Modifier = Modifier) {
                 style = MaterialTheme.typography.bodyLarge,
                 color = NolvaTheme.colors.inkMuted,
             )
+            if (coreVersion != null) {
+                Text(
+                    text = stringResource(R.string.core_version, coreVersion),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NolvaTheme.colors.inkMuted,
+                )
+            }
         }
     }
 }
@@ -61,5 +74,5 @@ fun NolvaApp(modifier: Modifier = Modifier) {
 @Preview(name = "Dark", showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 private fun NolvaAppPreview() {
-    NolvaTheme { NolvaApp() }
+    NolvaTheme { NolvaApp(coreVersion = "0.1.1") }
 }

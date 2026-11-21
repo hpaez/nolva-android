@@ -3,4 +3,5 @@
     <!-- Brand wordmark: always lowercase, never translated. -->
     <string name="wordmark" translatable="false">nolva</string>
     <string name="tagline">Your documents, in order.</string>
+    <string name="core_version" translatable="false">core v%1$s</string>
 </resources>
