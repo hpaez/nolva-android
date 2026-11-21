@@ -89,4 +89,6 @@
     <string name="search_documents">Buscar documentos</string>
     <string name="clear_search">Borrar búsqueda</string>
     <string name="no_search_results">Ningún documento coincide con «%1$s».</string>
+    <string name="share_page">Compartir página</string>
+    <string name="error_share_page">No se pudo compartir la página.</string>
 </resources>

@@ -1,6 +1,7 @@
 package app.nolva.data
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PdfFileNameTest {
@@ -20,6 +21,13 @@ class PdfFileNameTest {
     fun `never produces hidden or empty names`() {
         assertEquals("notas.pdf", pdfFileName("...notas"))
         assertEquals("document.pdf", pdfFileName("   "))
+    }
+
+    @Test
+    fun `names shared page images after the document and page number`() {
+        assertEquals("Factura 3_2026 - 2.jpg", pageImageFileName("Factura 3/2026", 2))
+        assertEquals("document - 1.jpg", pageImageFileName("  ", 1))
+        assertTrue(pageImageFileName("x".repeat(300), 12).endsWith(" - 12.jpg"))
     }
 
     @Test

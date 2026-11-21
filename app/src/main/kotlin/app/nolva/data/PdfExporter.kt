@@ -30,11 +30,14 @@ fun interface PdfExporter {
 private val UNSAFE_FILE_CHARS = Regex("""[\\/:*?"<>|\p{Cntrl}]""")
 
 /**
- * A file name for a document's PDF: its title with characters that file
- * systems or share targets reject replaced, e.g. `Factura 3/2026` →
- * `Factura 3_2026.pdf`.
+ * [title] made safe as a file name: characters that file systems or share
+ * targets reject are replaced, and it is never hidden, empty or too long.
  */
-fun pdfFileName(title: String): String {
-    val base = title.replace(UNSAFE_FILE_CHARS, "_").trim().trimStart('.').take(80).trim()
-    return (base.ifEmpty { "document" }) + ".pdf"
-}
+private fun safeBaseName(title: String): String =
+    title.replace(UNSAFE_FILE_CHARS, "_").trim().trimStart('.').take(80).trim().ifEmpty { "document" }
+
+/** A document's PDF file name, e.g. `Factura 3/2026` → `Factura 3_2026.pdf`. */
+fun pdfFileName(title: String): String = safeBaseName(title) + ".pdf"
+
+/** A shared page's image file name, e.g. `Factura 3_2026 - 2.jpg`. */
+fun pageImageFileName(title: String, pageNumber: Int): String = "${safeBaseName(title)} - $pageNumber.jpg"

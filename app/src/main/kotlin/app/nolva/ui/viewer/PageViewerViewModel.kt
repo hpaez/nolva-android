@@ -6,12 +6,16 @@ import app.nolva.data.DocumentRepository
 import app.nolva.data.Page
 import app.nolva.data.PageCropper
 import app.nolva.data.PageFilter
+import app.nolva.data.pageImageFileName
+import java.io.File
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class PageViewerUiState(
     val isLoading: Boolean = true,
@@ -20,13 +24,21 @@ data class PageViewerUiState(
     /** Page whose filter is being rendered; filters are disabled meanwhile. */
     val filteringPageId: String? = null,
     /** One-shot error to show; cleared with [PageViewerViewModel.messageShown]. */
-    val filterFailed: Boolean = false,
+    val message: PageViewerMessage? = null,
+    /** A page image ready for the share sheet; cleared with [PageViewerViewModel.shareHandled]. */
+    val pendingShare: File? = null,
 )
+
+enum class PageViewerMessage { FilterFailed, ShareFailed }
 
 class PageViewerViewModel(
     private val documentId: String,
+    private val title: String,
     private val repository: DocumentRepository,
     private val cropper: PageCropper,
+    /** Shareable folder exposed by the FileProvider. */
+    private val exportDir: File,
+    private val ioDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PageViewerUiState())
@@ -63,14 +75,42 @@ class PageViewerViewModel(
                             pages = current.pages.map { if (it.id == page.id) page else it },
                         )
                     },
-                    onFailure = { current.copy(filteringPageId = null, filterFailed = true) },
+                    onFailure = { current.copy(filteringPageId = null, message = PageViewerMessage.FilterFailed) },
                 )
             }
         }
     }
 
+    /**
+     * Copies the page's image (cropped and filtered, if it is) to the export
+     * folder as `<title> - <number>.jpg` and queues it for sharing. Page
+     * files themselves are never exposed to other apps.
+     */
+    fun sharePage(pageId: String) {
+        val page = _uiState.value.pages.find { it.id == pageId } ?: return
+        val number = _uiState.value.pages.indexOf(page) + 1
+        viewModelScope.launch {
+            val result = runSuspendCatching {
+                withContext(ioDispatcher) {
+                    exportDir.mkdirs()
+                    page.displayFile.copyTo(File(exportDir, pageImageFileName(title, number)), overwrite = true)
+                }
+            }
+            _uiState.update { state ->
+                result.fold(
+                    onSuccess = { state.copy(pendingShare = it) },
+                    onFailure = { state.copy(message = PageViewerMessage.ShareFailed) },
+                )
+            }
+        }
+    }
+
+    fun shareHandled() {
+        _uiState.update { it.copy(pendingShare = null) }
+    }
+
     fun messageShown() {
-        _uiState.update { it.copy(filterFailed = false) }
+        _uiState.update { it.copy(message = null) }
     }
 }
 

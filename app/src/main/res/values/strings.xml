@@ -66,6 +66,8 @@
     <string name="crop_invalid_corners">The corners can\'t cross. Adjust them and try again.</string>
     <string name="crop_save_failed">Couldn\'t save the crop.</string>
 
+    <string name="share_page">Share page</string>
+
     <!-- Filters -->
     <string name="filter_original">Original</string>
     <string name="filter_grayscale">Grayscale</string>
@@ -101,6 +103,7 @@
     <string name="error_delete_document">Couldn\'t delete the document.</string>
     <string name="error_delete_page">Couldn\'t delete the page.</string>
     <string name="error_move_page">Couldn\'t move the page.</string>
+    <string name="error_share_page">Couldn\'t share the page.</string>
     <string name="error_apply_filter">Couldn\'t apply the filter.</string>
     <string name="error_unsupported_image">That image format isn\'t supported.</string>
 </resources>
