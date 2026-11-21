@@ -24,7 +24,7 @@ class PageViewerViewModel(
     private val _uiState = MutableStateFlow(PageViewerUiState())
     val uiState: StateFlow<PageViewerUiState> = _uiState.asStateFlow()
 
-    init {
+    fun refresh() {
         viewModelScope.launch {
             _uiState.value = try {
                 PageViewerUiState(isLoading = false, pages = repository.listPages(documentId))
