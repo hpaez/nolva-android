@@ -32,3 +32,6 @@ sealed class DocumentException(message: String, cause: Throwable? = null) : Exce
     class Unsupported(message: String, cause: Throwable? = null) : DocumentException(message, cause)
     class Storage(message: String, cause: Throwable? = null) : DocumentException(message, cause)
 }
+
+/** Maximum title length, mirroring the core's validation (MAX_TITLE_CHARS). */
+const val MAX_TITLE_LENGTH = 200
