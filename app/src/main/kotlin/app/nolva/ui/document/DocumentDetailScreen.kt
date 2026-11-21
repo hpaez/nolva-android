@@ -183,7 +183,7 @@ private fun PageThumbnail(page: Page, onClick: () -> Unit) {
             // Coil downsamples to the displayed size, so full-resolution
             // originals never get decoded into memory here.
             AsyncImage(
-                model = page.originalFile,
+                model = page.displayFile,
                 contentDescription = stringResource(R.string.page_number, pageNumber),
                 contentScale = ContentScale.Crop,
                 modifier = Modifier

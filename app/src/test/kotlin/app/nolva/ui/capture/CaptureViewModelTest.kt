@@ -1,9 +1,12 @@
 package app.nolva.ui.capture
 
+import app.nolva.data.CornerDetection
+import app.nolva.data.Corners
 import app.nolva.data.Document
 import app.nolva.data.DocumentException
 import app.nolva.data.DocumentRepository
 import app.nolva.data.Page
+import app.nolva.data.PageCropper
 import java.io.File
 import java.time.Instant
 import kotlinx.coroutines.Dispatchers
@@ -50,8 +53,51 @@ class CaptureViewModelTest {
         override suspend fun listPages(documentId: String): List<Page> = emptyList()
     }
 
-    private fun viewModel(repository: DocumentRepository) =
-        CaptureViewModel("doc", repository, tempFolder.newFolder("captures"), dispatcher)
+    /** Detects with the given confidence (or nothing) and records crops. */
+    private class FakeCropper(private val confidence: Float?, private val failCrop: Boolean = false) : PageCropper {
+        val cropped = mutableListOf<String>()
+
+        override suspend fun getPage(pageId: String): Page = error("unused")
+
+        override suspend fun detectCorners(pageId: String): CornerDetection? =
+            confidence?.let { CornerDetection(Corners.FULL, it) }
+
+        override suspend fun cropPage(pageId: String, corners: Corners): Page {
+            if (failCrop) throw DocumentException.InvalidInput("crossed corners")
+            cropped += pageId
+            return Page(pageId, "doc", 0, File("/o.jpg"), Instant.EPOCH, processedFile = File("/p.jpg"))
+        }
+    }
+
+    private fun viewModel(repository: DocumentRepository, cropper: PageCropper = FakeCropper(confidence = null)) =
+        CaptureViewModel("doc", repository, cropper, tempFolder.newFolder("captures"), dispatcher)
+
+    @Test
+    fun `crops automatically when the sheet is detected confidently`() = runTest(dispatcher) {
+        val cropper = FakeCropper(confidence = 0.95f)
+        val viewModel = viewModel(FakeRepository(), cropper)
+
+        viewModel.onPictureTaken(viewModel.newCaptureFile().apply { writeText("jpeg") })
+        advanceUntilIdle()
+
+        assertEquals(listOf("p1"), cropper.cropped)
+        assertEquals(1, viewModel.uiState.value.capturedCount)
+    }
+
+    @Test
+    fun `keeps the original when detection is unsure or cropping fails`() = runTest(dispatcher) {
+        for (cropper in listOf(FakeCropper(confidence = 0.3f), FakeCropper(confidence = 0.9f, failCrop = true))) {
+            val viewModel = CaptureViewModel("doc", FakeRepository(), cropper, tempFolder.newFolder(), dispatcher)
+
+            viewModel.onPictureTaken(viewModel.newCaptureFile().apply { writeText("jpeg") })
+            advanceUntilIdle()
+
+            assertEquals(emptyList<String>(), cropper.cropped)
+            // The page is saved regardless: auto-cropping is best effort.
+            assertEquals(1, viewModel.uiState.value.capturedCount)
+            assertEquals(null, viewModel.uiState.value.message)
+        }
+    }
 
     @Test
     fun `stores captures as pages and deletes the temp files`() = runTest(dispatcher) {

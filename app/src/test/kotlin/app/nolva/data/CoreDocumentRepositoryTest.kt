@@ -3,7 +3,10 @@ package app.nolva.data
 import app.nolva.core.DocumentInfo
 import app.nolva.core.NolvaCoreInterface
 import app.nolva.core.NolvaException
+import app.nolva.core.PageCorners
 import app.nolva.core.PageInfo
+import app.nolva.core.CornerDetection as CoreCornerDetection
+import app.nolva.core.NormalizedPoint as CorePoint
 import java.io.File
 import java.time.Instant
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -12,6 +15,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
+
+private val coreCorners = PageCorners(
+    topLeft = CorePoint(0.1f, 0.2f),
+    topRight = CorePoint(0.9f, 0.2f),
+    bottomRight = CorePoint(0.9f, 0.8f),
+    bottomLeft = CorePoint(0.1f, 0.8f),
+)
 
 class CoreDocumentRepositoryTest {
 
@@ -32,15 +42,31 @@ class CoreDocumentRepositoryTest {
 
         override fun listDocuments(): List<DocumentInfo> = documents
 
-        override fun addPage(documentId: String, imagePath: String): PageInfo = PageInfo(
+        var croppedWith: PageCorners? = null
+
+        override fun addPage(documentId: String, imagePath: String): PageInfo = pageInfo(documentId)
+
+        override fun listPages(documentId: String): List<PageInfo> = emptyList()
+
+        override fun getPage(pageId: String): PageInfo = pageInfo("doc-1")
+
+        override fun detectPageCorners(pageId: String): CoreCornerDetection? =
+            CoreCornerDetection(corners = coreCorners, confidence = 0.9f)
+
+        override fun cropPage(pageId: String, corners: PageCorners): PageInfo {
+            croppedWith = corners
+            return pageInfo("doc-1").copy(processedPath = "/data/nolva/doc-1/processed.jpg", corners = corners)
+        }
+
+        private fun pageInfo(documentId: String) = PageInfo(
             id = "page-0",
             documentId = documentId,
             position = 3u,
             originalPath = "/data/nolva/$documentId/original.jpg",
+            processedPath = null,
+            corners = null,
             createdAtMs = 3_000,
         )
-
-        override fun listPages(documentId: String): List<PageInfo> = emptyList()
     }
 
     private val dispatcher = StandardTestDispatcher()
@@ -84,6 +110,22 @@ class CoreDocumentRepositoryTest {
             val causes = generateSequence<Throwable>(e) { it.cause }
             assertTrue("core error must be kept as a cause", causes.any { it === coreError })
         }
+    }
+
+    @Test
+    fun `maps detection and crops in both directions`() = runTest(dispatcher) {
+        val core = FakeCore()
+        val repository = CoreDocumentRepository(dispatcher) { core }
+
+        val detection = repository.detectCorners("page-0")!!
+        assertEquals(0.9f, detection.confidence)
+        assertEquals(NormalizedPoint(0.1f, 0.2f), detection.corners.topLeft)
+
+        val page = repository.cropPage("page-0", detection.corners)
+        assertEquals(coreCorners, core.croppedWith)
+        assertEquals(File("/data/nolva/doc-1/processed.jpg"), page.processedFile)
+        assertEquals(page.processedFile, page.displayFile)
+        assertEquals(detection.corners, page.corners)
     }
 
     @Test

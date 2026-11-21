@@ -3,6 +3,7 @@ package app.nolva.ui.capture
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.nolva.data.DocumentRepository
+import app.nolva.data.PageCropper
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
@@ -27,16 +28,25 @@ data class CaptureUiState(
 
 enum class CaptureMessage { CaptureFailed, SaveFailed }
 
+/** Minimum detection confidence to crop automatically after a capture. */
+internal const val AUTO_CROP_MIN_CONFIDENCE = 0.6f
+
 /**
  * Stores camera captures as pages of a document.
  *
  * The camera writes each photo to a temp file from [newCaptureFile]; this
  * ViewModel hands it to the core (which copies it into managed storage) and
  * always deletes the temp file afterwards.
+ *
+ * Each stored page is then cropped automatically when the core finds the
+ * sheet with enough confidence. Auto-cropping is best effort: if it fails or
+ * isn't confident, the page simply keeps its original photo and the user
+ * can crop it by hand later.
  */
 class CaptureViewModel(
     private val documentId: String,
     private val repository: DocumentRepository,
+    private val cropper: PageCropper,
     private val captureDir: File,
     private val ioDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
@@ -54,7 +64,8 @@ class CaptureViewModel(
         _uiState.update { it.copy(pendingSaves = it.pendingSaves + 1) }
         viewModelScope.launch {
             val saved = try {
-                repository.addPage(documentId, file)
+                val page = repository.addPage(documentId, file)
+                autoCrop(page.id)
                 true
             } catch (e: CancellationException) {
                 throw e
@@ -71,6 +82,19 @@ class CaptureViewModel(
                     message = if (saved) state.message else CaptureMessage.SaveFailed,
                 )
             }
+        }
+    }
+
+    private suspend fun autoCrop(pageId: String) {
+        try {
+            val detection = cropper.detectCorners(pageId) ?: return
+            if (detection.confidence >= AUTO_CROP_MIN_CONFIDENCE) {
+                cropper.cropPage(pageId, detection.corners)
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Keep the original photo; the page is already saved.
         }
     }
 

@@ -101,6 +101,7 @@ fun NolvaNavigation(container: AppContainer, modifier: Modifier = Modifier) {
                                 CaptureViewModel(
                                     documentId = key.documentId,
                                     repository = container.documentRepository,
+                                    cropper = container.pageCropper,
                                     captureDir = container.captureDir,
                                     ioDispatcher = Dispatchers.IO,
                                 )
