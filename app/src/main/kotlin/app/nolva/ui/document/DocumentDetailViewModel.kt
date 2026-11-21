@@ -34,7 +34,8 @@ class DocumentDetailViewModel(
     private val _uiState = MutableStateFlow(DocumentDetailUiState())
     val uiState: StateFlow<DocumentDetailUiState> = _uiState.asStateFlow()
 
-    init {
+    /** Reloads the pages, e.g. when coming back from the camera. */
+    fun refresh() {
         viewModelScope.launch {
             val result = runSuspendCatching { repository.listPages(documentId) }
             _uiState.update { state ->

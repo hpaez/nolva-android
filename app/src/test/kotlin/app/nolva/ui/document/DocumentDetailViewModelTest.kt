@@ -52,6 +52,7 @@ class DocumentDetailViewModelTest {
     @Test
     fun `loads existing pages`() = runTest(dispatcher) {
         val viewModel = DocumentDetailViewModel("doc", FakeRepository(listOf(page("a", 0))), FakeImporter())
+        viewModel.refresh()
         advanceUntilIdle()
 
         val state = viewModel.uiState.value
@@ -63,6 +64,7 @@ class DocumentDetailViewModelTest {
     fun `imports images in the order they were picked`() = runTest(dispatcher) {
         val importer = FakeImporter()
         val viewModel = DocumentDetailViewModel("doc", FakeRepository(), importer)
+        viewModel.refresh()
         advanceUntilIdle()
 
         viewModel.importImages(listOf("content://1", "content://2", "content://3"))
@@ -78,6 +80,7 @@ class DocumentDetailViewModelTest {
     fun `a failed image does not stop the rest`() = runTest(dispatcher) {
         val importer = FakeImporter(failures = mapOf("content://bad" to DocumentException.Unsupported("gif")))
         val viewModel = DocumentDetailViewModel("doc", FakeRepository(), importer)
+        viewModel.refresh()
         advanceUntilIdle()
 
         viewModel.importImages(listOf("content://bad", "content://good"))

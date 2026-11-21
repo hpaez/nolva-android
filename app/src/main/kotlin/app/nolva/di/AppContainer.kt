@@ -34,6 +34,9 @@ class AppContainer(context: Context) {
         )
     }
 
+    /** Scratch space for camera captures before the core imports them. */
+    val captureDir: File get() = File(appContext.cacheDir, "captures")
+
     /** Version of the native core; also a cheap check that it loads. */
     suspend fun coreVersion(): String = withContext(Dispatchers.IO) {
         app.nolva.core.coreVersion()

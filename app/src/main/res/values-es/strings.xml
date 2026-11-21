@@ -18,10 +18,25 @@
 
     <!-- Document detail -->
     <string name="back">Volver</string>
-    <string name="add_from_gallery">Agregar desde galería</string>
+    <string name="scan">Escanear</string>
+    <string name="gallery">Galería</string>
     <string name="no_pages_title">Aún no hay páginas</string>
-    <string name="no_pages_body">Agrega páginas desde tu galería. El escaneo con la cámara viene pronto.</string>
+    <string name="no_pages_body">Escanea páginas con la cámara o agrégalas desde tu galería.</string>
     <string name="page_number">Página %1$d</string>
+
+    <!-- Camera -->
+    <string name="close">Cerrar</string>
+    <string name="done">Listo</string>
+    <string name="take_photo">Tomar foto</string>
+    <plurals name="pages_captured">
+        <item quantity="one">%d página agregada</item>
+        <item quantity="many">%d páginas agregadas</item>
+        <item quantity="other">%d páginas agregadas</item>
+    </plurals>
+    <string name="camera_permission_title">Se necesita acceso a la cámara</string>
+    <string name="camera_permission_body">Nolva usa la cámara solo para escanear tus documentos. Las fotos se quedan en tu dispositivo.</string>
+    <string name="grant_permission">Permitir cámara</string>
+    <string name="open_settings">Abrir ajustes</string>
 
     <!-- Errors -->
     <string name="error_load_documents">No se pudieron cargar tus documentos.</string>
@@ -29,5 +44,6 @@
     <string name="error_invalid_title">Ese título no es válido.</string>
     <string name="error_load_pages">No se pudieron cargar las páginas.</string>
     <string name="error_import_page">No se pudo agregar la imagen.</string>
+    <string name="error_capture">No se pudo tomar la foto. Inténtalo de nuevo.</string>
     <string name="error_unsupported_image">Ese formato de imagen no es compatible.</string>
 </resources>

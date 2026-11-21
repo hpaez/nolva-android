@@ -29,6 +29,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -58,9 +59,12 @@ fun DocumentDetailRoute(
     viewModel: DocumentDetailViewModel,
     title: String,
     onBack: () -> Unit,
+    onScan: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    // Reload whenever this screen is shown again (e.g. back from the camera).
+    LaunchedEffect(viewModel) { viewModel.refresh() }
     val pickImages = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(MAX_PICK),
     ) { uris -> viewModel.importImages(uris.map { it.toString() }) }
@@ -69,6 +73,7 @@ fun DocumentDetailRoute(
         title = title,
         uiState = uiState,
         onBack = onBack,
+        onScan = onScan,
         onAddFromGallery = {
             pickImages.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
         },
@@ -83,6 +88,7 @@ fun DocumentDetailScreen(
     title: String,
     uiState: DocumentDetailUiState,
     onBack: () -> Unit,
+    onScan: () -> Unit,
     onAddFromGallery: () -> Unit,
     onMessageShown: () -> Unit,
     modifier: Modifier = Modifier,
@@ -107,6 +113,11 @@ fun DocumentDetailScreen(
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                         }
                     },
+                    actions = {
+                        TextButton(onClick = onAddFromGallery) {
+                            Text(stringResource(R.string.gallery))
+                        }
+                    },
                 )
                 if (uiState.isImporting) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
@@ -115,11 +126,11 @@ fun DocumentDetailScreen(
         },
         floatingActionButton = {
             ExtendedFloatingActionButton(
-                onClick = onAddFromGallery,
+                onClick = onScan,
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
-                Text(stringResource(R.string.add_from_gallery))
+                Text(stringResource(R.string.scan))
             }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -223,6 +234,7 @@ private fun DocumentDetailEmptyPreview() {
             title = "Lease agreement",
             uiState = DocumentDetailUiState(isLoading = false),
             onBack = {},
+            onScan = {},
             onAddFromGallery = {},
             onMessageShown = {},
         )
@@ -240,6 +252,7 @@ private fun DocumentDetailPagesPreview() {
             title = "Lease agreement",
             uiState = DocumentDetailUiState(isLoading = false, pages = pages, pendingImports = 1),
             onBack = {},
+            onScan = {},
             onAddFromGallery = {},
             onMessageShown = {},
         )
