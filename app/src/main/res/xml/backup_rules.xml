@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Backup rules for Android 8–11 (API 26–30), which can't tell cloud backups
+  from device transfers: documents are excluded from both, to be safe.
+  See data_extraction_rules.xml for Android 12+.
+-->
+<full-backup-content>
+    <exclude domain="file" path="nolva/" />
+</full-backup-content>

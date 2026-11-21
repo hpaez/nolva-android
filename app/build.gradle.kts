@@ -11,7 +11,7 @@ android {
     defaultConfig {
         applicationId = "app.nolva"
         minSdk = 26
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
     }
