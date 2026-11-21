@@ -38,6 +38,15 @@
     <string name="grant_permission">Permitir cámara</string>
     <string name="open_settings">Abrir ajustes</string>
 
+    <!-- Crop editor -->
+    <string name="adjust_crop">Ajustar recorte</string>
+    <string name="crop_title">Ajustar recorte</string>
+    <string name="crop_apply">Aplicar</string>
+    <string name="crop_full_image">Usar la foto completa</string>
+    <string name="crop_check_corners">No encontramos bien los bordes de la hoja. Arrastra las esquinas hasta que coincidan.</string>
+    <string name="crop_invalid_corners">Las esquinas no se pueden cruzar. Ajústalas e inténtalo de nuevo.</string>
+    <string name="crop_save_failed">No se pudo guardar el recorte.</string>
+
     <!-- Errors -->
     <string name="error_load_documents">No se pudieron cargar tus documentos.</string>
     <string name="error_create_document">No se pudo crear el documento.</string>

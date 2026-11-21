@@ -18,7 +18,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -48,9 +50,12 @@ fun PageViewerRoute(
     viewModel: PageViewerViewModel,
     initialPage: Int,
     onClose: () -> Unit,
+    onAdjustCrop: (pageId: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    // Reload when coming back from the crop editor.
+    LaunchedEffect(viewModel) { viewModel.refresh() }
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -73,6 +78,7 @@ fun PageViewerRoute(
             else -> PagePager(
                 pages = uiState.pages,
                 initialPage = initialPage.coerceIn(0, uiState.pages.lastIndex),
+                onAdjustCrop = onAdjustCrop,
             )
         }
 
@@ -89,7 +95,7 @@ fun PageViewerRoute(
 }
 
 @Composable
-private fun PagePager(pages: List<Page>, initialPage: Int) {
+private fun PagePager(pages: List<Page>, initialPage: Int, onAdjustCrop: (String) -> Unit) {
     val pagerState = rememberPagerState(initialPage = initialPage) { pages.size }
     // Swiping between pages is disabled while the current page is zoomed in,
     // so dragging pans the image instead of changing page.
@@ -107,6 +113,16 @@ private fun PagePager(pages: List<Page>, initialPage: Int) {
                 // Only the visible page reports its zoom state.
                 onZoomChanged = { zoomed -> if (index == pagerState.currentPage) currentPageZoomed = zoomed },
             )
+        }
+
+        TextButton(
+            onClick = { onAdjustCrop(pages[pagerState.currentPage].id) },
+            modifier = Modifier
+                .statusBarsPadding()
+                .padding(8.dp)
+                .align(Alignment.TopEnd),
+        ) {
+            Text(stringResource(R.string.adjust_crop), color = Color.White)
         }
 
         Text(
@@ -137,8 +153,13 @@ private fun ZoomablePage(page: Page, onZoomChanged: (Boolean) -> Unit) {
         onZoomChanged(scale > 1f)
     }
 
-    val transformState = rememberTransformableState { zoomChange, panChange, _ ->
-        update(scale * zoomChange, offset + panChange)
+    // Zoom around the fingers: keep the point under the pinch centroid fixed.
+    // graphicsLayer scales around the centre, hence the centre-relative maths.
+    val transformState = rememberTransformableState { centroid, zoomChange, panChange, _ ->
+        val newScale = (scale * zoomChange).coerceIn(1f, MAX_ZOOM)
+        val factor = newScale / scale
+        val pivot = centroid - Offset(size.width / 2f, size.height / 2f)
+        update(newScale, pivot - (pivot - offset) * factor + panChange)
     }
 
     AsyncImage(

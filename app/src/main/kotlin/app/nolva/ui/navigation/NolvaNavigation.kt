@@ -14,6 +14,8 @@ import androidx.navigation3.ui.NavDisplay
 import app.nolva.di.AppContainer
 import app.nolva.ui.capture.CaptureRoute
 import app.nolva.ui.capture.CaptureViewModel
+import app.nolva.ui.crop.CropRoute
+import app.nolva.ui.crop.CropViewModel
 import app.nolva.ui.document.DocumentDetailRoute
 import app.nolva.ui.document.DocumentDetailViewModel
 import app.nolva.ui.documents.DocumentListRoute
@@ -35,6 +37,9 @@ data class CaptureKey(val documentId: String) : NavKey
 
 @Serializable
 data class PageViewerKey(val documentId: String, val initialPage: Int) : NavKey
+
+@Serializable
+data class CropKey(val pageId: String) : NavKey
 
 @Composable
 fun NolvaNavigation(container: AppContainer, modifier: Modifier = Modifier) {
@@ -91,6 +96,17 @@ fun NolvaNavigation(container: AppContainer, modifier: Modifier = Modifier) {
                     ),
                     initialPage = key.initialPage,
                     onClose = { backStack.removeLastOrNull() },
+                    onAdjustCrop = { pageId -> backStack.add(CropKey(pageId)) },
+                )
+            }
+            entry<CropKey> { key ->
+                CropRoute(
+                    viewModel = viewModel(
+                        factory = viewModelFactory {
+                            initializer { CropViewModel(key.pageId, container.pageCropper) }
+                        },
+                    ),
+                    onDone = { backStack.removeLastOrNull() },
                 )
             }
             entry<CaptureKey> { key ->

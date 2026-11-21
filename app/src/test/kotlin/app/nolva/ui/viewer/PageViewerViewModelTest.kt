@@ -47,6 +47,7 @@ class PageViewerViewModelTest {
     fun `loads the document pages`() = runTest(dispatcher) {
         val pages = List(3) { Page("p$it", "doc", it, File("/p$it.jpg"), Instant.EPOCH) }
         val viewModel = PageViewerViewModel("doc", FakeRepository(pages))
+        viewModel.refresh()
         advanceUntilIdle()
 
         val state = viewModel.uiState.value
@@ -57,6 +58,7 @@ class PageViewerViewModelTest {
     @Test
     fun `reports load failures`() = runTest(dispatcher) {
         val viewModel = PageViewerViewModel("doc", FakeRepository(emptyList(), DocumentException.Storage("io")))
+        viewModel.refresh()
         advanceUntilIdle()
 
         assertTrue(viewModel.uiState.value.loadFailed)

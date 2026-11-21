@@ -45,6 +45,15 @@
     <string name="grant_permission">Allow camera</string>
     <string name="open_settings">Open settings</string>
 
+    <!-- Crop editor -->
+    <string name="adjust_crop">Adjust crop</string>
+    <string name="crop_title">Adjust crop</string>
+    <string name="crop_apply">Apply</string>
+    <string name="crop_full_image">Use whole photo</string>
+    <string name="crop_check_corners">We couldn\'t find the page edges clearly. Drag the corners to match the page.</string>
+    <string name="crop_invalid_corners">The corners can\'t cross. Adjust them and try again.</string>
+    <string name="crop_save_failed">Couldn\'t save the crop.</string>
+
     <!-- Errors -->
     <string name="error_load_documents">Couldn\'t load your documents.</string>
     <string name="error_create_document">Couldn\'t create the document.</string>
