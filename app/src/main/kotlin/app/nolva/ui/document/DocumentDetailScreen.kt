@@ -18,7 +18,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
@@ -48,8 +49,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -64,6 +68,8 @@ import app.nolva.ui.theme.NolvaTheme
 import coil3.compose.AsyncImage
 import java.io.File
 import java.time.Instant
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyGridState
 
 /** Most images the user can pick in one go from the Photo Picker. */
 private const val MAX_PICK = 20
@@ -259,8 +265,19 @@ private fun PageGrid(
     onMovePage: (pageId: String, toPosition: Int) -> Unit,
     onDeletePage: (pageId: String) -> Unit,
 ) {
+    // Order shown while dragging. Moves are only sent to the core when the
+    // drag ends, so a long drag across many pages is a single write; the
+    // core's answer then becomes the new `pages` and resets this.
+    var order by remember(pages) { mutableStateOf(pages) }
+    val gridState = rememberLazyGridState()
+    val reorderState = rememberReorderableLazyGridState(gridState) { from, to ->
+        order = order.toMutableList().apply { add(to.index, removeAt(from.index)) }
+    }
+    val haptics = LocalHapticFeedback.current
+
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 140.dp),
+        state = gridState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
             start = 16.dp,
@@ -271,17 +288,31 @@ private fun PageGrid(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        itemsIndexed(pages, key = { _, page -> page.id }) { index, page ->
-            PageThumbnail(
-                page = page,
-                canMoveEarlier = editable && index > 0,
-                canMoveLater = editable && index < pages.lastIndex,
-                editable = editable,
-                onClick = { onOpenPage(index) },
-                onMoveEarlier = { onMovePage(page.id, index - 1) },
-                onMoveLater = { onMovePage(page.id, index + 1) },
-                onDelete = { onDeletePage(page.id) },
-            )
+        items(order, key = { it.id }) { page ->
+            val index = order.indexOf(page)
+            ReorderableItem(reorderState, key = page.id) { isDragging ->
+                PageThumbnail(
+                    page = page,
+                    number = index + 1,
+                    canMoveEarlier = editable && index > 0,
+                    canMoveLater = editable && index < order.lastIndex,
+                    editable = editable,
+                    isDragging = isDragging,
+                    onClick = { onOpenPage(index) },
+                    onMoveEarlier = { onMovePage(page.id, index - 1) },
+                    onMoveLater = { onMovePage(page.id, index + 1) },
+                    onDelete = { onDeletePage(page.id) },
+                    // Long press anywhere on the thumbnail picks the page up.
+                    dragModifier = Modifier.longPressDraggableHandle(
+                        enabled = editable,
+                        onDragStarted = { haptics.performHapticFeedback(HapticFeedbackType.LongPress) },
+                        onDragStopped = {
+                            val target = order.indexOfFirst { it.id == page.id }
+                            if (target >= 0 && target != page.position) onMovePage(page.id, target)
+                        },
+                    ),
+                )
+            }
         }
     }
 }
@@ -289,18 +320,36 @@ private fun PageGrid(
 @Composable
 private fun PageThumbnail(
     page: Page,
+    /** 1-based number in the order currently shown, which changes while dragging. */
+    number: Int,
     canMoveEarlier: Boolean,
     canMoveLater: Boolean,
     editable: Boolean,
+    isDragging: Boolean,
     onClick: () -> Unit,
     onMoveEarlier: () -> Unit,
     onMoveLater: () -> Unit,
     onDelete: () -> Unit,
+    dragModifier: Modifier = Modifier,
 ) {
-    val pageNumber = page.position + 1
+    val pageNumber = number
     var showMenu by remember { mutableStateOf(false) }
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        OutlinedCard(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.graphicsLayer {
+            // Lift the page being dragged above the others.
+            val scale = if (isDragging) 1.05f else 1f
+            scaleX = scale
+            scaleY = scale
+            shadowElevation = if (isDragging) 12.dp.toPx() else 0f
+        },
+    ) {
+        OutlinedCard(
+            onClick = onClick,
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(dragModifier),
+        ) {
             // Coil downsamples to the displayed size, so full-resolution
             // originals never get decoded into memory here.
             AsyncImage(
