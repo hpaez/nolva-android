@@ -2,11 +2,18 @@ package app.nolva.ui.viewer
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
@@ -14,9 +21,13 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -40,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.nolva.R
 import app.nolva.data.Page
+import app.nolva.data.PageFilter
 import coil3.compose.AsyncImage
 
 private const val MAX_ZOOM = 5f
@@ -56,6 +68,14 @@ fun PageViewerRoute(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     // Reload when coming back from the crop editor.
     LaunchedEffect(viewModel) { viewModel.refresh() }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val filterError = stringResource(R.string.error_apply_filter)
+    LaunchedEffect(uiState.filterFailed) {
+        if (uiState.filterFailed) {
+            snackbarHostState.showSnackbar(filterError)
+            viewModel.messageShown()
+        }
+    }
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -78,9 +98,19 @@ fun PageViewerRoute(
             else -> PagePager(
                 pages = uiState.pages,
                 initialPage = initialPage.coerceIn(0, uiState.pages.lastIndex),
+                filteringPageId = uiState.filteringPageId,
                 onAdjustCrop = onAdjustCrop,
+                onApplyFilter = viewModel::applyFilter,
             )
         }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .navigationBarsPadding()
+                .padding(bottom = 72.dp)
+                .align(Alignment.BottomCenter),
+        )
 
         IconButton(
             onClick = onClose,
@@ -95,7 +125,13 @@ fun PageViewerRoute(
 }
 
 @Composable
-private fun PagePager(pages: List<Page>, initialPage: Int, onAdjustCrop: (String) -> Unit) {
+private fun PagePager(
+    pages: List<Page>,
+    initialPage: Int,
+    filteringPageId: String?,
+    onAdjustCrop: (String) -> Unit,
+    onApplyFilter: (pageId: String, filter: PageFilter) -> Unit,
+) {
     val pagerState = rememberPagerState(initialPage = initialPage) { pages.size }
     // Swiping between pages is disabled while the current page is zoomed in,
     // so dragging pans the image instead of changing page.
@@ -125,6 +161,22 @@ private fun PagePager(pages: List<Page>, initialPage: Int, onAdjustCrop: (String
             Text(stringResource(R.string.adjust_crop), color = Color.White)
         }
 
+        val current = pages[pagerState.currentPage]
+        if (current.id == filteringPageId) {
+            CircularProgressIndicator(color = Color.White, modifier = Modifier.align(Alignment.Center))
+        }
+        FilterBar(
+            selected = current.filter,
+            enabled = filteringPageId == null,
+            onSelect = { filter -> onApplyFilter(current.id, filter) },
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .background(Color.Black.copy(alpha = 0.6f))
+                .navigationBarsPadding()
+                .padding(vertical = 8.dp),
+        )
+
         Text(
             text = stringResource(R.string.page_counter, pagerState.currentPage + 1, pages.size),
             color = Color.White,
@@ -135,6 +187,46 @@ private fun PagePager(pages: List<Page>, initialPage: Int, onAdjustCrop: (String
                 .align(Alignment.TopCenter),
         )
     }
+}
+
+@Composable
+private fun FilterBar(
+    selected: PageFilter,
+    enabled: Boolean,
+    onSelect: (PageFilter) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Row(
+            modifier = Modifier
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            PageFilter.entries.forEach { filter ->
+                FilterChip(
+                    selected = filter == selected,
+                    onClick = { onSelect(filter) },
+                    enabled = enabled,
+                    label = { Text(stringResource(filter.labelRes())) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        labelColor = Color.White,
+                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                        disabledLabelColor = Color.White.copy(alpha = 0.4f),
+                        disabledSelectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                    ),
+                )
+            }
+        }
+    }
+}
+
+private fun PageFilter.labelRes(): Int = when (this) {
+    PageFilter.Original -> R.string.filter_original
+    PageFilter.Grayscale -> R.string.filter_grayscale
+    PageFilter.BlackAndWhite -> R.string.filter_black_and_white
+    PageFilter.Enhanced -> R.string.filter_enhanced
 }
 
 @Composable

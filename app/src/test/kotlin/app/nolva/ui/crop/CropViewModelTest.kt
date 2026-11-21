@@ -6,6 +6,7 @@ import app.nolva.data.DocumentException
 import app.nolva.data.NormalizedPoint
 import app.nolva.data.Page
 import app.nolva.data.PageCropper
+import app.nolva.data.PageFilter
 import java.io.File
 import java.time.Instant
 import kotlinx.coroutines.Dispatchers
@@ -57,6 +58,8 @@ class CropViewModelTest {
             cropped = corners
             return getPage(pageId).copy(corners = corners, processedFile = File("/processed.jpg"))
         }
+
+        override suspend fun applyFilter(pageId: String, filter: PageFilter): Page = error("unused")
     }
 
     @Test

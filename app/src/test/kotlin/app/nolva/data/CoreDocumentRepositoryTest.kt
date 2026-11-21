@@ -4,6 +4,7 @@ import app.nolva.core.DocumentInfo
 import app.nolva.core.NolvaCoreInterface
 import app.nolva.core.NolvaException
 import app.nolva.core.PageCorners
+import app.nolva.core.PageFilter as CorePageFilter
 import app.nolva.core.PageInfo
 import app.nolva.core.PdfExportInfo
 import app.nolva.core.PdfOptions
@@ -89,6 +90,13 @@ class CoreDocumentRepositoryTest {
             return listOf(pageInfo("doc-1").copy(id = pageId, position = 0u))
         }
 
+        var filteredWith: CorePageFilter? = null
+
+        override fun setPageFilter(pageId: String, filter: CorePageFilter): PageInfo {
+            filteredWith = filter
+            return pageInfo("doc-1").copy(processedPath = "/data/nolva/doc-1/filtered.jpg", filter = filter)
+        }
+
         private fun pageInfo(documentId: String) = PageInfo(
             id = "page-0",
             documentId = documentId,
@@ -96,6 +104,7 @@ class CoreDocumentRepositoryTest {
             originalPath = "/data/nolva/$documentId/original.jpg",
             processedPath = null,
             corners = null,
+            filter = CorePageFilter.ORIGINAL,
             createdAtMs = 3_000,
         )
     }
@@ -201,6 +210,20 @@ class CoreDocumentRepositoryTest {
         } catch (e: DocumentException.NotFound) {
             assertEquals("page", e.message)
         }
+    }
+
+    @Test
+    fun `maps filters in both directions`() = runTest(dispatcher) {
+        val core = FakeCore()
+        val repository = CoreDocumentRepository(dispatcher) { core }
+
+        assertEquals(PageFilter.Original, repository.getPage("page-0").filter)
+        for (filter in PageFilter.entries) {
+            val page = repository.applyFilter("page-0", filter)
+            assertEquals(filter, page.filter)
+            assertEquals(File("/data/nolva/doc-1/filtered.jpg"), page.displayFile)
+        }
+        assertEquals(CorePageFilter.ENHANCED, core.filteredWith)
     }
 
     @Test

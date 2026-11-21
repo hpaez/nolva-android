@@ -7,6 +7,7 @@ import app.nolva.data.DocumentException
 import app.nolva.data.DocumentRepository
 import app.nolva.data.Page
 import app.nolva.data.PageCropper
+import app.nolva.data.PageFilter
 import java.io.File
 import java.time.Instant
 import kotlinx.coroutines.Dispatchers
@@ -67,6 +68,8 @@ class CaptureViewModelTest {
             cropped += pageId
             return Page(pageId, "doc", 0, File("/o.jpg"), Instant.EPOCH, processedFile = File("/p.jpg"))
         }
+
+        override suspend fun applyFilter(pageId: String, filter: PageFilter): Page = error("unused")
     }
 
     private fun viewModel(repository: DocumentRepository, cropper: PageCropper = FakeCropper(confidence = null)) =

@@ -95,7 +95,7 @@ fun NolvaNavigation(container: AppContainer, modifier: Modifier = Modifier) {
                 PageViewerRoute(
                     viewModel = viewModel(
                         factory = viewModelFactory {
-                            initializer { PageViewerViewModel(key.documentId, container.documentRepository) }
+                            initializer { PageViewerViewModel(key.documentId, container.documentRepository, container.pageCropper) }
                         },
                     ),
                     initialPage = key.initialPage,

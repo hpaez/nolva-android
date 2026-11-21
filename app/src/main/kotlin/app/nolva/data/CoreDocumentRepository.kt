@@ -4,6 +4,7 @@ import app.nolva.core.DocumentInfo
 import app.nolva.core.NolvaCoreInterface
 import app.nolva.core.NolvaException
 import app.nolva.core.PageCorners
+import app.nolva.core.PageFilter as CorePageFilter
 import app.nolva.core.PageInfo
 import app.nolva.core.PdfOptions
 import app.nolva.core.PaperSize as CorePaperSize
@@ -79,6 +80,10 @@ class CoreDocumentRepository(
         core.cropPage(pageId, corners.toPageCorners()).toPage()
     }
 
+    override suspend fun applyFilter(pageId: String, filter: PageFilter): Page = call {
+        core.setPageFilter(pageId, filter.toCore()).toPage()
+    }
+
     private suspend fun <T> call(block: () -> T): T = withContext(ioDispatcher) {
         try {
             block()
@@ -104,7 +109,22 @@ private fun PageInfo.toPage() = Page(
     createdAt = Instant.ofEpochMilli(createdAtMs),
     processedFile = processedPath?.let(::File),
     corners = corners?.toCorners(),
+    filter = filter.toPageFilter(),
 )
+
+private fun PageFilter.toCore() = when (this) {
+    PageFilter.Original -> CorePageFilter.ORIGINAL
+    PageFilter.Grayscale -> CorePageFilter.GRAYSCALE
+    PageFilter.BlackAndWhite -> CorePageFilter.BLACK_AND_WHITE
+    PageFilter.Enhanced -> CorePageFilter.ENHANCED
+}
+
+private fun CorePageFilter.toPageFilter() = when (this) {
+    CorePageFilter.ORIGINAL -> PageFilter.Original
+    CorePageFilter.GRAYSCALE -> PageFilter.Grayscale
+    CorePageFilter.BLACK_AND_WHITE -> PageFilter.BlackAndWhite
+    CorePageFilter.ENHANCED -> PageFilter.Enhanced
+}
 
 private fun PaperSize.toCore() = when (this) {
     PaperSize.A4 -> CorePaperSize.A4
