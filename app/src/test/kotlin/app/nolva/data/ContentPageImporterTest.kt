@@ -15,7 +15,26 @@ class ContentPageImporterTest {
     }
 
     @Test
+    fun `copies formats the core reads`() {
+        assertEquals(ContentPageImporter.ImportPlan.Copy("jpg"), ContentPageImporter.importPlanFor("image/jpeg", 26))
+        assertEquals(ContentPageImporter.ImportPlan.Copy("webp"), ContentPageImporter.importPlanFor("image/webp", 36))
+    }
+
+    @Test
+    fun `converts HEIC and HEIF to JPEG where Android can decode them`() {
+        assertEquals(ContentPageImporter.ImportPlan.ConvertToJpeg, ContentPageImporter.importPlanFor("image/heic", 28))
+        assertEquals(ContentPageImporter.ImportPlan.ConvertToJpeg, ContentPageImporter.importPlanFor("image/heif", 37))
+        assertEquals("jpg", ContentPageImporter.ImportPlan.ConvertToJpeg.extension)
+    }
+
+    @Test
+    fun `rejects HEIC before Android 9`() {
+        assertNull(ContentPageImporter.importPlanFor("image/heic", 27))
+    }
+
+    @Test
     fun `rejects unsupported or unknown types`() {
+        assertNull(ContentPageImporter.importPlanFor("image/gif", 36))
         assertNull(ContentPageImporter.extensionFor("image/gif"))
         assertNull(ContentPageImporter.extensionFor("application/pdf"))
         assertNull(ContentPageImporter.extensionFor(null))
