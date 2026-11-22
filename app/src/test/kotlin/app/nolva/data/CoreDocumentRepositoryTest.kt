@@ -1,5 +1,6 @@
 package app.nolva.data
 
+import app.nolva.core.CleanupInfo
 import app.nolva.core.DocumentInfo
 import app.nolva.core.NolvaCoreInterface
 import app.nolva.core.NolvaException
@@ -54,6 +55,8 @@ class CoreDocumentRepositoryTest {
         override fun listPages(documentId: String): List<PageInfo> = emptyList()
 
         override fun getPage(pageId: String): PageInfo = pageInfo("doc-1")
+
+        override fun removeOrphanFiles(): CleanupInfo = CleanupInfo(filesRemoved = 3u, bytesFreed = 4_096u)
 
         var exportedWith: PdfOptions? = null
 
@@ -130,6 +133,13 @@ class CoreDocumentRepositoryTest {
         assertEquals(Instant.ofEpochMilli(2_000), created.updatedAt)
         assertEquals(null, created.coverFile)
         assertEquals(listOf(created), repository.listDocuments())
+    }
+
+    @Test
+    fun `maps orphan cleanup results`() = runTest(dispatcher) {
+        val repository = CoreDocumentRepository(dispatcher) { FakeCore() }
+
+        assertEquals(CleanupResult(3, 4_096), repository.removeOrphanFiles())
     }
 
     @Test

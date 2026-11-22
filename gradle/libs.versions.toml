@@ -13,7 +13,7 @@ junit = "4.13.2"
 lifecycle = "2.11.0"
 navigation3 = "1.1.4"
 # Shared Rust core (github.com/hpaez/nolva-core), from GitHub Packages.
-nolvaCore = "0.7.0"
+nolvaCore = "0.8.0"
 
 [libraries]
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }

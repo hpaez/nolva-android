@@ -12,6 +12,7 @@ import app.nolva.data.PageCropper
 import app.nolva.data.PageImporter
 import app.nolva.data.PdfExporter
 import app.nolva.data.SheetDetector
+import app.nolva.data.StorageMaintenance
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -55,6 +56,17 @@ class AppContainer(context: Context) {
 
     /** Scratch space for camera captures before the core imports them. */
     val captureDir: File get() = File(appContext.cacheDir, "captures")
+
+    /** Folder where gallery imports are staged; see [ContentPageImporter]. */
+    private val importDir: File get() = File(appContext.cacheDir, "imports")
+
+    val storageMaintenance: StorageMaintenance by lazy {
+        StorageMaintenance(
+            cleaner = coreRepository,
+            scratchDirs = listOf(captureDir, importDir, exportDir),
+            ioDispatcher = Dispatchers.IO,
+        )
+    }
 
     /** Version of the native core; also a cheap check that it loads. */
     suspend fun coreVersion(): String = withContext(Dispatchers.IO) {

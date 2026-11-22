@@ -15,8 +15,8 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 
 /**
- * [DocumentRepository], [DocumentEditor], [PageCropper] and [PdfExporter]
- * backed by the Rust core.
+ * [DocumentRepository], [DocumentEditor], [PageCropper], [PdfExporter] and
+ * [OrphanFileCleaner] backed by the Rust core.
  *
  * Core calls are synchronous and may block on disk I/O, so every call runs on
  * [ioDispatcher]. The core itself is created lazily on that dispatcher too:
@@ -26,7 +26,7 @@ import kotlinx.coroutines.withContext
 class CoreDocumentRepository(
     private val ioDispatcher: CoroutineDispatcher,
     coreFactory: () -> NolvaCoreInterface,
-) : DocumentRepository, DocumentEditor, PageCropper, PdfExporter {
+) : DocumentRepository, DocumentEditor, PageCropper, PdfExporter, OrphanFileCleaner {
 
     private val core by lazy(coreFactory)
 
@@ -66,6 +66,11 @@ class CoreDocumentRepository(
         val options = PdfOptions(paperSize = paperSize.toCore(), marginMm = 0f)
         val info = core.exportPdf(documentId, output.absolutePath, options)
         PdfExport(output, info.pageCount.toInt(), info.sizeBytes.toLong())
+    }
+
+    override suspend fun removeOrphanFiles(): CleanupResult = call {
+        val info = core.removeOrphanFiles()
+        CleanupResult(info.filesRemoved.toInt(), info.bytesFreed.toLong())
     }
 
     override suspend fun getPage(pageId: String): Page = call {
