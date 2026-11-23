@@ -78,6 +78,12 @@
     <string name="crop_save_failed">Couldn\'t save the crop.</string>
 
     <string name="share_page">Share page</string>
+    <string name="show_text">Text</string>
+    <string name="page_text_title">Text on page %1$d</string>
+    <string name="copy_text">Copy text</string>
+    <string name="no_text_found">No text was found on this page.</string>
+    <string name="text_pending">Still reading the text on this page. Try again in a moment.</string>
+    <string name="error_load_text">Couldn\'t load the page text.</string>
 
     <!-- Filters -->
     <string name="filter_original">Original</string>

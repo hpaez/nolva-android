@@ -6,6 +6,9 @@ import app.nolva.core.NolvaException
 import app.nolva.core.PageCorners
 import app.nolva.core.PageFilter as CorePageFilter
 import app.nolva.core.PageInfo
+import app.nolva.core.PageTextInfo
+import app.nolva.core.RecognizedLine as CoreLine
+import app.nolva.core.TextRect as CoreRect
 import app.nolva.core.PdfOptions
 import app.nolva.core.PaperSize as CorePaperSize
 import app.nolva.core.NormalizedPoint as CorePoint
@@ -15,8 +18,11 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 
 /**
- * [DocumentRepository], [DocumentEditor], [PageCropper], [PdfExporter] and
- * [OrphanFileCleaner] backed by the Rust core.
+ * [DocumentRepository], [DocumentEditor], [PageCropper], [PdfExporter],
+ * [OrphanFileCleaner] and [PageTextStore] backed by the Rust core.
+ *
+ * [onPageImagesChanged] runs after a page gets a new image (added, cropped
+ * or filtered), so its text can be recognized again.
  *
  * Core calls are synchronous and may block on disk I/O, so every call runs on
  * [ioDispatcher]. The core itself is created lazily on that dispatcher too:
@@ -25,8 +31,9 @@ import kotlinx.coroutines.withContext
  */
 class CoreDocumentRepository(
     private val ioDispatcher: CoroutineDispatcher,
+    private val onPageImagesChanged: () -> Unit = {},
     coreFactory: () -> NolvaCoreInterface,
-) : DocumentRepository, DocumentEditor, PageCropper, PdfExporter, OrphanFileCleaner {
+) : DocumentRepository, DocumentEditor, PageCropper, PdfExporter, OrphanFileCleaner, PageTextStore {
 
     private val core by lazy(coreFactory)
 
@@ -40,7 +47,7 @@ class CoreDocumentRepository(
 
     override suspend fun addPage(documentId: String, image: File): Page = call {
         core.addPage(documentId, image.absolutePath).toPage()
-    }
+    }.also { onPageImagesChanged() }
 
     override suspend fun listPages(documentId: String): List<Page> = call {
         core.listPages(documentId).map { it.toPage() }
@@ -83,10 +90,22 @@ class CoreDocumentRepository(
 
     override suspend fun cropPage(pageId: String, corners: Corners): Page = call {
         core.cropPage(pageId, corners.toPageCorners()).toPage()
-    }
+    }.also { onPageImagesChanged() }
 
     override suspend fun applyFilter(pageId: String, filter: PageFilter): Page = call {
         core.setPageFilter(pageId, filter.toCore()).toPage()
+    }.also { onPageImagesChanged() }
+
+    override suspend fun pagesNeedingText(limit: Int): List<Page> = call {
+        core.pagesNeedingText(limit.coerceAtLeast(0).toUInt()).map { it.toPage() }
+    }
+
+    override suspend fun savePageText(pageId: String, image: File, lines: List<RecognizedLine>): PageText = call {
+        core.savePageText(pageId, image.absolutePath, lines.map { it.toCore() }).toPageText()
+    }
+
+    override suspend fun getPageText(pageId: String): PageText? = call {
+        core.getPageText(pageId)?.toPageText()
     }
 
     private suspend fun <T> call(block: () -> T): T = withContext(ioDispatcher) {
@@ -157,9 +176,28 @@ private fun Corners.toPageCorners() = PageCorners(
     bottomLeft = bottomLeft.toCorePoint(),
 )
 
+private fun RecognizedLine.toCore() = CoreLine(
+    block = block.coerceAtLeast(0).toUInt(),
+    text = text,
+    bounds = CoreRect(bounds.left, bounds.top, bounds.right, bounds.bottom),
+)
+
+private fun PageTextInfo.toPageText() = PageText(
+    pageId = pageId,
+    text = text,
+    lines = lines.map { line ->
+        RecognizedLine(
+            block = line.block.toInt(),
+            text = line.text,
+            bounds = TextRect(line.bounds.left, line.bounds.top, line.bounds.right, line.bounds.bottom),
+        )
+    },
+)
+
 private fun NolvaException.toDocumentException(): DocumentException = when (this) {
     is NolvaException.InvalidArgument -> DocumentException.InvalidInput(reason, this)
     is NolvaException.NotFound -> DocumentException.NotFound(reason, this)
     is NolvaException.Unsupported -> DocumentException.Unsupported(reason, this)
     is NolvaException.Storage -> DocumentException.Storage(reason, this)
+    is NolvaException.Conflict -> DocumentException.Conflict(reason, this)
 }

@@ -82,6 +82,9 @@ sealed class DocumentException(message: String, cause: Throwable? = null) : Exce
     class NotFound(message: String, cause: Throwable? = null) : DocumentException(message, cause)
     class Unsupported(message: String, cause: Throwable? = null) : DocumentException(message, cause)
     class Storage(message: String, cause: Throwable? = null) : DocumentException(message, cause)
+
+    /** The data changed while the operation ran, so its result no longer applies. */
+    class Conflict(message: String, cause: Throwable? = null) : DocumentException(message, cause)
 }
 
 /** Maximum title length, mirroring the core's validation (MAX_TITLE_CHARS). */

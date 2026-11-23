@@ -101,6 +101,7 @@ fun NolvaNavigation(container: AppContainer, modifier: Modifier = Modifier) {
                                     title = key.title,
                                     repository = container.documentRepository,
                                     cropper = container.pageCropper,
+                                    textStore = container.pageTextStore,
                                     exportDir = container.exportDir,
                                     ioDispatcher = Dispatchers.IO,
                                 )

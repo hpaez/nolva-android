@@ -1,32 +1,38 @@
 package app.nolva.ui.viewer
 
+import android.content.ClipData
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -37,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,6 +53,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntSize
@@ -56,6 +65,7 @@ import app.nolva.data.Page
 import app.nolva.data.PageFilter
 import app.nolva.ui.share.shareFile
 import coil3.compose.AsyncImage
+import kotlinx.coroutines.launch
 
 private const val MAX_ZOOM = 5f
 private const val DOUBLE_TAP_ZOOM = 2.5f
@@ -77,6 +87,8 @@ fun PageViewerRoute(
             when (it) {
                 PageViewerMessage.FilterFailed -> R.string.error_apply_filter
                 PageViewerMessage.ShareFailed -> R.string.error_share_page
+                PageViewerMessage.TextPending -> R.string.text_pending
+                PageViewerMessage.TextFailed -> R.string.error_load_text
             },
         )
     }
@@ -118,6 +130,7 @@ fun PageViewerRoute(
                 onAdjustCrop = onAdjustCrop,
                 onApplyFilter = viewModel::applyFilter,
                 onShare = viewModel::sharePage,
+                onShowText = viewModel::showText,
             )
         }
 
@@ -139,6 +152,52 @@ fun PageViewerRoute(
             Icon(Icons.Default.Close, contentDescription = stringResource(R.string.close), tint = Color.White)
         }
     }
+
+    uiState.shownText?.let { shown ->
+        PageTextSheet(shown = shown, onDismiss = viewModel::textDismissed)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PageTextSheet(shown: ShownText, onDismiss: () -> Unit) {
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
+    val label = stringResource(R.string.page_text_title, shown.pageNumber)
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 24.dp),
+        ) {
+            Text(label, style = MaterialTheme.typography.titleMedium)
+            if (shown.text.isEmpty()) {
+                Text(stringResource(R.string.no_text_found), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                // Selectable, to copy just a part; the button copies it all.
+                SelectionContainer(
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    Text(shown.text, style = MaterialTheme.typography.bodyMedium)
+                }
+                Button(
+                    onClick = {
+                        scope.launch {
+                            clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(label, shown.text)))
+                            onDismiss()
+                        }
+                    },
+                    modifier = Modifier.align(Alignment.End),
+                ) {
+                    Text(stringResource(R.string.copy_text))
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -149,6 +208,7 @@ private fun PagePager(
     onAdjustCrop: (String) -> Unit,
     onApplyFilter: (pageId: String, filter: PageFilter) -> Unit,
     onShare: (pageId: String) -> Unit,
+    onShowText: (pageId: String) -> Unit,
 ) {
     val pagerState = rememberPagerState(initialPage = initialPage) { pages.size }
     // Swiping between pages is disabled while the current page is zoomed in,
@@ -176,6 +236,9 @@ private fun PagePager(
                 .padding(8.dp)
                 .align(Alignment.TopEnd),
         ) {
+            TextButton(onClick = { onShowText(pages[pagerState.currentPage].id) }) {
+                Text(stringResource(R.string.show_text), color = Color.White)
+            }
             IconButton(onClick = { onShare(pages[pagerState.currentPage].id) }) {
                 Icon(Icons.Default.Share, contentDescription = stringResource(R.string.share_page), tint = Color.White)
             }
