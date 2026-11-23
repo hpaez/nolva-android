@@ -3,9 +3,9 @@ agp = "9.5.2"
 # AGP 9 compiles Kotlin natively; the Compose compiler plugin pins the Kotlin
 # version (they must always match).
 kotlin = "2.4.21"
-composeBom = "2026.09.00"
+composeBom = "2026.11.01"
 activityCompose = "1.13.0"
-camera = "1.6.2"
+camera = "1.7.0"
 coil = "3.6.3"
 reorderable = "3.1.0"
 coroutines = "1.11.0"
