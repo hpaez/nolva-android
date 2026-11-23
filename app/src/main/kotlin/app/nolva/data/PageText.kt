@@ -21,6 +21,16 @@ data class PageText(
     val lines: List<RecognizedLine>,
 )
 
+/** A page whose text matches a search. */
+data class TextMatch(
+    val documentId: String,
+    val pageId: String,
+    /** Zero-based position of the page in its document. */
+    val pagePosition: Int,
+    /** Short excerpt around the match. */
+    val snippet: String,
+)
+
 /** Stores recognized text, kept by the core in step with each page's image. Main-safe. */
 interface PageTextStore {
     /** Up to [limit] pages whose text has to be (re)recognized, newest first. */
@@ -36,6 +46,12 @@ interface PageTextStore {
 
     /** The page's text, or `null` while recognition is pending. */
     suspend fun getPageText(pageId: String): PageText?
+
+    /**
+     * Pages whose text contains every word of [query] (prefixes match; case
+     * and accents are ignored), best match first.
+     */
+    suspend fun searchText(query: String): List<TextMatch>
 }
 
 /** Recognizes text in an image file, on the device. */

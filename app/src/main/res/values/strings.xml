@@ -14,7 +14,7 @@
         <item quantity="other">%d pages</item>
     </plurals>
 
-    <string name="search_documents">Search documents</string>
+    <string name="search_documents">Search titles and text</string>
     <string name="clear_search">Clear search</string>
     <!-- %1$s: what the user searched for -->
     <string name="no_search_results">No documents match “%1$s”.</string>
@@ -79,6 +79,7 @@
 
     <string name="share_page">Share page</string>
     <string name="show_text">Text</string>
+    <string name="text_match">Page %1$d: %2$s</string>
     <string name="page_text_title">Text on page %1$d</string>
     <string name="copy_text">Copy text</string>
     <string name="no_text_found">No text was found on this page.</string>

@@ -5,11 +5,16 @@ import app.nolva.data.DocumentEditor
 import app.nolva.data.DocumentException
 import app.nolva.data.DocumentRepository
 import app.nolva.data.Page
+import app.nolva.data.PageText
+import app.nolva.data.PageTextStore
+import app.nolva.data.RecognizedLine
+import app.nolva.data.TextMatch
 import java.io.File
 import java.time.Instant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -72,8 +77,69 @@ class DocumentListViewModelTest {
         override suspend fun movePage(pageId: String, toPosition: Int): List<Page> = error("unused")
     }
 
-    private fun viewModel(repository: FakeRepository, editor: DocumentEditor = FakeEditor(repository)) =
-        DocumentListViewModel(repository, editor)
+    /** Returns [matches] for any query and records the queries it got. */
+    private class FakeTextStore(var matches: List<TextMatch> = emptyList()) : PageTextStore {
+        val queries = mutableListOf<String>()
+
+        override suspend fun searchText(query: String): List<TextMatch> {
+            queries += query
+            return matches
+        }
+
+        override suspend fun pagesNeedingText(limit: Int): List<Page> = emptyList()
+        override suspend fun savePageText(pageId: String, image: File, lines: List<RecognizedLine>): PageText =
+            error("unused")
+        override suspend fun getPageText(pageId: String): PageText? = null
+    }
+
+    private fun viewModel(
+        repository: FakeRepository,
+        editor: DocumentEditor = FakeEditor(repository),
+        textStore: PageTextStore = FakeTextStore(),
+    ) = DocumentListViewModel(repository, editor, textStore)
+
+    private fun match(documentId: String, page: Int) = TextMatch(documentId, "$documentId-p$page", page, "…total $page…")
+
+    @Test
+    fun `search finds documents by title or by page text`() = runTest(dispatcher) {
+        val repository = FakeRepository().apply {
+            documents += listOf(document("a", "Factura luz"), document("b", "Contrato"), document("c", "Otro"))
+        }
+        val text = FakeTextStore(listOf(match("b", 2), match("b", 0), match("a", 1)))
+        val viewModel = viewModel(repository, textStore = text)
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        viewModel.search("fact")
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(listOf("a", "b"), state.visibleDocuments.map { it.id })
+        assertEquals("best match per document", 2, state.contentMatches.getValue("b").pagePosition)
+        assertEquals(listOf("fact"), text.queries)
+    }
+
+    @Test
+    fun `typing waits for a pause and only the last query runs`() = runTest(dispatcher) {
+        val repository = FakeRepository().apply { documents += document("a", "A") }
+        val text = FakeTextStore(listOf(match("a", 0)))
+        val viewModel = viewModel(repository, textStore = text)
+        viewModel.refresh()
+        advanceUntilIdle()
+        text.queries.clear()
+
+        viewModel.search("b")
+        advanceTimeBy(SEARCH_DEBOUNCE_MS / 2)
+        viewModel.search("bo")
+        advanceTimeBy(SEARCH_DEBOUNCE_MS / 2)
+        viewModel.search("bol")
+        advanceUntilIdle()
+
+        assertEquals(listOf("bol"), text.queries)
+        viewModel.search("")
+        assertEquals(emptyMap<String, TextMatch>(), viewModel.uiState.value.contentMatches)
+        assertEquals(listOf("a"), viewModel.uiState.value.visibleDocuments.map { it.id })
+    }
 
     @Test
     fun `renamed documents move to the top`() = runTest(dispatcher) {
