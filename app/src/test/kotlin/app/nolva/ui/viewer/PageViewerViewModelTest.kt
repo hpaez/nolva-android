@@ -8,6 +8,9 @@ import app.nolva.data.Corners
 import app.nolva.data.Page
 import app.nolva.data.PageCropper
 import app.nolva.data.PageFilter
+import app.nolva.data.PageText
+import app.nolva.data.PageTextStore
+import app.nolva.data.RecognizedLine
 import java.io.File
 import java.time.Instant
 import kotlinx.coroutines.Dispatchers
@@ -63,6 +66,13 @@ class PageViewerViewModelTest {
         }
     }
 
+    private class FakeTextStore(private val texts: Map<String, PageText> = emptyMap()) : PageTextStore {
+        override suspend fun pagesNeedingText(limit: Int): List<Page> = emptyList()
+        override suspend fun savePageText(pageId: String, image: File, lines: List<RecognizedLine>): PageText =
+            error("unused")
+        override suspend fun getPageText(pageId: String): PageText? = texts[pageId]
+    }
+
     @get:Rule
     val tempFolder = TemporaryFolder()
 
@@ -70,14 +80,35 @@ class PageViewerViewModelTest {
         pages: List<Page>,
         cropper: PageCropper = FakeCropper(),
         failure: Exception? = null,
+        texts: Map<String, PageText> = emptyMap(),
     ) = PageViewerViewModel(
         documentId = "doc",
         title = "Factura 3/2026",
         repository = FakeRepository(pages, failure),
         cropper = cropper,
+        textStore = FakeTextStore(texts),
         exportDir = tempFolder.root.resolve("exports"),
         ioDispatcher = dispatcher,
     )
+
+    @Test
+    fun `shows recognized text, or says it is pending`() = runTest(dispatcher) {
+        val texts = mapOf("p1" to PageText("p1", "Total: 5.990", emptyList()))
+        val viewModel = viewModel(listOf(page("p0", 0), page("p1", 1)), texts = texts)
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        viewModel.showText("p1")
+        advanceUntilIdle()
+        assertEquals(ShownText(2, "Total: 5.990"), viewModel.uiState.value.shownText)
+        viewModel.textDismissed()
+        assertEquals(null, viewModel.uiState.value.shownText)
+
+        viewModel.showText("p0")
+        advanceUntilIdle()
+        assertEquals(PageViewerMessage.TextPending, viewModel.uiState.value.message)
+        assertEquals(null, viewModel.uiState.value.shownText)
+    }
 
     @Test
     fun `shares a copy of the page named after the document`() = runTest(dispatcher) {

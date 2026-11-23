@@ -13,9 +13,15 @@ junit = "4.13.2"
 lifecycle = "2.11.0"
 navigation3 = "1.1.4"
 # Shared Rust core (github.com/hpaez/nolva-core), from GitHub Packages.
-nolvaCore = "0.8.0"
+nolvaCore = "0.9.0"
+exifinterface = "1.4.2"
+mlkitTextRecognition = "16.0.1"
+work = "2.12.0"
 
 [libraries]
+androidx-exifinterface = { group = "androidx.exifinterface", name = "exifinterface", version.ref = "exifinterface" }
+androidx-work-runtime = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "work" }
+mlkit-text-recognition = { group = "com.google.mlkit", name = "text-recognition", version.ref = "mlkitTextRecognition" }
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camera" }
 androidx-camera-compose = { group = "androidx.camera", name = "camera-compose", version.ref = "camera" }

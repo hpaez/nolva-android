@@ -6,6 +6,7 @@ import app.nolva.data.DocumentRepository
 import app.nolva.data.Page
 import app.nolva.data.PageCropper
 import app.nolva.data.PageFilter
+import app.nolva.data.PageTextStore
 import app.nolva.data.pageImageFileName
 import java.io.File
 import kotlinx.coroutines.CancellationException
@@ -27,15 +28,21 @@ data class PageViewerUiState(
     val message: PageViewerMessage? = null,
     /** A page image ready for the share sheet; cleared with [PageViewerViewModel.shareHandled]. */
     val pendingShare: File? = null,
+    /** Recognized text being shown; cleared with [PageViewerViewModel.textDismissed]. */
+    val shownText: ShownText? = null,
 )
 
-enum class PageViewerMessage { FilterFailed, ShareFailed }
+/** A page's recognized text, as shown in the text sheet. Empty when the page has none. */
+data class ShownText(val pageNumber: Int, val text: String)
+
+enum class PageViewerMessage { FilterFailed, ShareFailed, TextPending, TextFailed }
 
 class PageViewerViewModel(
     private val documentId: String,
     private val title: String,
     private val repository: DocumentRepository,
     private val cropper: PageCropper,
+    private val textStore: PageTextStore,
     /** Shareable folder exposed by the FileProvider. */
     private val exportDir: File,
     private val ioDispatcher: CoroutineDispatcher,
@@ -103,6 +110,32 @@ class PageViewerViewModel(
                 )
             }
         }
+    }
+
+    /** Shows the page's recognized text, or says it's still being recognized. */
+    fun showText(pageId: String) {
+        val pages = _uiState.value.pages
+        val number = pages.indexOfFirst { it.id == pageId } + 1
+        if (number == 0) return
+        viewModelScope.launch {
+            val result = runSuspendCatching { textStore.getPageText(pageId) }
+            _uiState.update { state ->
+                result.fold(
+                    onSuccess = { text ->
+                        if (text == null) {
+                            state.copy(message = PageViewerMessage.TextPending)
+                        } else {
+                            state.copy(shownText = ShownText(number, text.text))
+                        }
+                    },
+                    onFailure = { state.copy(message = PageViewerMessage.TextFailed) },
+                )
+            }
+        }
+    }
+
+    fun textDismissed() {
+        _uiState.update { it.copy(shownText = null) }
     }
 
     fun shareHandled() {

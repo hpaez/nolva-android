@@ -51,6 +51,11 @@ dependencies {
     implementation(libs.androidx.navigation3.runtime)
     implementation(libs.androidx.navigation3.ui)
     implementation(libs.coil.compose)
+    implementation(libs.androidx.exifinterface)
+    implementation(libs.androidx.work.runtime)
+    // On-device OCR with the model bundled in the APK: works offline and
+    // without Google Play services.
+    implementation(libs.mlkit.text.recognition)
     implementation(libs.reorderable)
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.material3)

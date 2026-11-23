@@ -102,4 +102,10 @@
     <string name="capture_hint_find">Apunta a un documento</string>
     <string name="capture_hint_found">Documento detectado</string>
     <string name="capture_hint_hold">Mantén quieto…</string>
+    <string name="show_text">Texto</string>
+    <string name="page_text_title">Texto de la página %1$d</string>
+    <string name="copy_text">Copiar texto</string>
+    <string name="no_text_found">No se encontró texto en esta página.</string>
+    <string name="text_pending">Todavía se está leyendo el texto de esta página. Prueba en un momento.</string>
+    <string name="error_load_text">No se pudo cargar el texto de la página.</string>
 </resources>

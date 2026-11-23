@@ -3,6 +3,7 @@ package app.nolva
 import android.app.Application
 import android.util.Log
 import app.nolva.di.AppContainer
+import app.nolva.work.TextRecognitionWorker
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,6 +19,8 @@ class NolvaApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Pages left pending by a previous run, or added before OCR existed.
+        TextRecognitionWorker.schedule(this)
         appScope.launch {
             // Let the first screen load before walking the storage.
             delay(MAINTENANCE_DELAY)

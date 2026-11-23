@@ -7,6 +7,9 @@ import app.nolva.core.NolvaException
 import app.nolva.core.PageCorners
 import app.nolva.core.PageFilter as CorePageFilter
 import app.nolva.core.PageInfo
+import app.nolva.core.PageTextInfo
+import app.nolva.core.RecognizedLine as CoreLine
+import app.nolva.core.TextSearchHit
 import app.nolva.core.PdfExportInfo
 import app.nolva.core.PdfOptions
 import app.nolva.core.PaperSize as CorePaperSize
@@ -55,6 +58,21 @@ class CoreDocumentRepositoryTest {
         override fun listPages(documentId: String): List<PageInfo> = emptyList()
 
         override fun getPage(pageId: String): PageInfo = pageInfo("doc-1")
+
+        var savedLines: List<CoreLine>? = null
+        var textConflict = false
+
+        override fun pagesNeedingText(limit: UInt): List<PageInfo> = listOf(pageInfo("doc-1"))
+
+        override fun savePageText(pageId: String, imagePath: String, lines: List<CoreLine>): PageTextInfo {
+            if (textConflict) throw NolvaException.Conflict("re-cropped")
+            savedLines = lines
+            return PageTextInfo(pageId, lines.joinToString("\n") { it.text }, lines, recognizedAtMs = 5)
+        }
+
+        override fun getPageText(pageId: String): PageTextInfo? = null
+
+        override fun searchText(query: String): List<TextSearchHit> = emptyList()
 
         override fun removeOrphanFiles(): CleanupInfo = CleanupInfo(filesRemoved = 3u, bytesFreed = 4_096u)
 
@@ -133,6 +151,36 @@ class CoreDocumentRepositoryTest {
         assertEquals(Instant.ofEpochMilli(2_000), created.updatedAt)
         assertEquals(null, created.coverFile)
         assertEquals(listOf(created), repository.listDocuments())
+    }
+
+    @Test
+    fun `saves recognized text and maps conflicts`() = runTest(dispatcher) {
+        val core = FakeCore()
+        val repository = CoreDocumentRepository(dispatcher) { core }
+        val line = RecognizedLine(block = 1, text = "Total", bounds = TextRect(0.1f, 0.2f, 0.3f, 0.25f))
+
+        val saved = repository.savePageText("p1", File("/data/p1.jpg"), listOf(line))
+
+        assertEquals(PageText("p1", "Total", listOf(line)), saved)
+        assertEquals(1u, core.savedLines!!.single().block)
+        core.textConflict = true
+        try {
+            repository.savePageText("p1", File("/data/p1.jpg"), listOf(line))
+            fail("expected a conflict")
+        } catch (e: DocumentException.Conflict) {
+            // expected
+        }
+    }
+
+    @Test
+    fun `new page images schedule text recognition`() = runTest(dispatcher) {
+        var scheduled = 0
+        val repository = CoreDocumentRepository(dispatcher, onPageImagesChanged = { scheduled++ }) { FakeCore() }
+
+        repository.addPage("doc-1", File("/tmp/scan.jpg"))
+        repository.listPages("doc-1")
+
+        assertEquals(1, scheduled)
     }
 
     @Test
