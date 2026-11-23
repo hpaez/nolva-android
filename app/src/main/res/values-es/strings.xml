@@ -86,7 +86,7 @@
     <string name="filter_black_and_white">Blanco y negro</string>
     <string name="filter_enhanced">Mejorado</string>
     <string name="error_apply_filter">No se pudo aplicar el filtro.</string>
-    <string name="search_documents">Buscar documentos</string>
+    <string name="search_documents">Buscar por título o texto</string>
     <string name="clear_search">Borrar búsqueda</string>
     <string name="no_search_results">Ningún documento coincide con «%1$s».</string>
     <string name="share_page">Compartir página</string>
@@ -103,6 +103,7 @@
     <string name="capture_hint_found">Documento detectado</string>
     <string name="capture_hint_hold">Mantén quieto…</string>
     <string name="show_text">Texto</string>
+    <string name="text_match">Pág. %1$d: %2$s</string>
     <string name="page_text_title">Texto de la página %1$d</string>
     <string name="copy_text">Copiar texto</string>
     <string name="no_text_found">No se encontró texto en esta página.</string>

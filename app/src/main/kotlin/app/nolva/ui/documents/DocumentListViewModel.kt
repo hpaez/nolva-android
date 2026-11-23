@@ -6,9 +6,13 @@ import app.nolva.data.Document
 import app.nolva.data.DocumentEditor
 import app.nolva.data.DocumentException
 import app.nolva.data.DocumentRepository
+import app.nolva.data.PageTextStore
+import app.nolva.data.TextMatch
 import java.text.Normalizer
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,14 +24,26 @@ data class DocumentListUiState(
     val documents: List<Document> = emptyList(),
     /** Text typed in the search field; empty shows every document. */
     val query: String = "",
+    /**
+     * Best page match per document id for [query] in the pages' recognized
+     * text. Lags slightly behind [query] while typing.
+     */
+    val contentMatches: Map<String, TextMatch> = emptyMap(),
     val isCreating: Boolean = false,
     /** One-shot message to show to the user; cleared with [DocumentListViewModel.messageShown]. */
     val message: DocumentListMessage? = null,
 ) {
-    /** Documents whose title contains [query], ignoring case and accents. */
+    /**
+     * Documents whose title contains [query] (ignoring case and accents) or
+     * whose pages' text matches it, most recent first.
+     */
     val visibleDocuments: List<Document> by lazy {
         val needle = query.searchKey()
-        if (needle.isEmpty()) documents else documents.filter { needle in it.title.searchKey() }
+        if (needle.isEmpty()) {
+            documents
+        } else {
+            documents.filter { needle in it.title.searchKey() || it.id in contentMatches }
+        }
     }
 }
 
@@ -42,10 +58,13 @@ enum class DocumentListMessage { LoadFailed, CreateFailed, InvalidTitle, RenameF
 class DocumentListViewModel(
     private val repository: DocumentRepository,
     private val editor: DocumentEditor,
+    private val textStore: PageTextStore,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DocumentListUiState())
     val uiState: StateFlow<DocumentListUiState> = _uiState.asStateFlow()
+
+    private var contentSearch: Job? = null
 
     fun refresh() {
         // The spinner only shows on the first load (initial state); later
@@ -58,6 +77,8 @@ class DocumentListViewModel(
                     onFailure = { state.copy(isLoading = false, message = DocumentListMessage.LoadFailed) },
                 )
             }
+            // Pages may have been recognized since the last search.
+            searchContent(_uiState.value.query, debounce = false)
         }
     }
 
@@ -122,12 +143,41 @@ class DocumentListViewModel(
 
     fun search(query: String) {
         _uiState.update { it.copy(query = query) }
+        searchContent(query, debounce = true)
+    }
+
+    /**
+     * Looks [query] up in the pages' text. While typing, waits for a short
+     * pause first, and a newer query cancels the previous search. Failures
+     * are silent: title matches still show.
+     */
+    private fun searchContent(query: String, debounce: Boolean) {
+        contentSearch?.cancel()
+        if (query.isBlank()) {
+            _uiState.update { it.copy(contentMatches = emptyMap()) }
+            return
+        }
+        contentSearch = viewModelScope.launch {
+            if (debounce) delay(SEARCH_DEBOUNCE_MS)
+            val matches = runSuspendCatching { textStore.searchText(query) }.getOrNull() ?: return@launch
+            _uiState.update { state ->
+                if (state.query != query) {
+                    state
+                } else {
+                    // Results come best first: keep each document's best page.
+                    state.copy(contentMatches = matches.reversed().associateBy { it.documentId })
+                }
+            }
+        }
     }
 
     fun messageShown() {
         _uiState.update { it.copy(message = null) }
     }
 }
+
+/** Pause in typing before searching the pages' text. */
+internal const val SEARCH_DEBOUNCE_MS = 250L
 
 /** Like [runCatching], but never swallows coroutine cancellation. */
 private inline fun <T> runSuspendCatching(block: () -> T): Result<T> = try {

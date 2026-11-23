@@ -108,6 +108,10 @@ class CoreDocumentRepository(
         core.getPageText(pageId)?.toPageText()
     }
 
+    override suspend fun searchText(query: String): List<TextMatch> = call {
+        core.searchText(query).map { TextMatch(it.documentId, it.pageId, it.pagePosition.toInt(), it.snippet) }
+    }
+
     private suspend fun <T> call(block: () -> T): T = withContext(ioDispatcher) {
         try {
             block()

@@ -11,6 +11,7 @@ import app.nolva.data.PageFilter
 import app.nolva.data.PageText
 import app.nolva.data.PageTextStore
 import app.nolva.data.RecognizedLine
+import app.nolva.data.TextMatch
 import java.io.File
 import java.time.Instant
 import kotlinx.coroutines.Dispatchers
@@ -71,6 +72,7 @@ class PageViewerViewModelTest {
         override suspend fun savePageText(pageId: String, image: File, lines: List<RecognizedLine>): PageText =
             error("unused")
         override suspend fun getPageText(pageId: String): PageText? = texts[pageId]
+        override suspend fun searchText(query: String): List<TextMatch> = emptyList()
     }
 
     @get:Rule

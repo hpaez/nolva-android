@@ -51,6 +51,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -60,6 +61,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.nolva.R
 import app.nolva.data.Document
 import app.nolva.data.MAX_TITLE_LENGTH
+import app.nolva.data.TextMatch
 import app.nolva.ui.theme.NolvaTheme
 import app.nolva.ui.theme.WordmarkStyle
 import coil3.compose.AsyncImage
@@ -169,6 +171,8 @@ fun DocumentListScreen(
                 } else {
                     DocumentList(
                         documents = uiState.visibleDocuments,
+                        // Only while searching; stale matches never show on the full list.
+                        matches = if (uiState.query.isBlank()) emptyMap() else uiState.contentMatches,
                         contentPadding = PaddingValues(bottom = innerPadding.calculateBottomPadding()),
                         onOpenDocument = onOpenDocument,
                         onRename = { renamingId = it.id },
@@ -230,6 +234,7 @@ fun DocumentListScreen(
 @Composable
 private fun DocumentList(
     documents: List<Document>,
+    matches: Map<String, TextMatch>,
     contentPadding: PaddingValues,
     onOpenDocument: (Document) -> Unit,
     onRename: (Document) -> Unit,
@@ -249,6 +254,7 @@ private fun DocumentList(
         items(documents, key = { it.id }) { document ->
             DocumentRow(
                 document = document,
+                match = matches[document.id],
                 onClick = { onOpenDocument(document) },
                 onRename = { onRename(document) },
                 onDelete = { onDelete(document) },
@@ -258,11 +264,17 @@ private fun DocumentList(
 }
 
 @Composable
-private fun DocumentRow(document: Document, onClick: () -> Unit, onRename: () -> Unit, onDelete: () -> Unit) {
+private fun DocumentRow(
+    document: Document,
+    match: TextMatch?,
+    onClick: () -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
+) {
     OutlinedCard(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Cover(document)
-            DocumentSummary(document, Modifier.weight(1f))
+            DocumentSummary(document, match, Modifier.weight(1f))
             DocumentMenu(onRename = onRename, onDelete = onDelete)
         }
     }
@@ -353,7 +365,7 @@ private fun DocumentMenu(onRename: () -> Unit, onDelete: () -> Unit) {
 }
 
 @Composable
-private fun DocumentSummary(document: Document, modifier: Modifier = Modifier) {
+private fun DocumentSummary(document: Document, match: TextMatch?, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier.padding(start = 12.dp, top = 16.dp, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -373,6 +385,16 @@ private fun DocumentSummary(document: Document, modifier: Modifier = Modifier) {
             style = MaterialTheme.typography.bodySmall,
             color = NolvaTheme.colors.inkMuted,
         )
+        if (match != null) {
+            // Where the search found the text, so it's clear why this shows up.
+            Text(
+                text = stringResource(R.string.text_match, match.pagePosition + 1, match.snippet),
+                style = MaterialTheme.typography.bodySmall,
+                fontStyle = FontStyle.Italic,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 

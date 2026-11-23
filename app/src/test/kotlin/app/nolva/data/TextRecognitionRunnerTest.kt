@@ -38,6 +38,7 @@ class TextRecognitionRunnerTest {
         }
 
         override suspend fun getPageText(pageId: String): PageText? = null
+        override suspend fun searchText(query: String): List<TextMatch> = emptyList()
     }
 
     @Test
