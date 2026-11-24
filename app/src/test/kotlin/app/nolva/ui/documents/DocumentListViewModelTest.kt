@@ -7,6 +7,8 @@ import app.nolva.data.DocumentRepository
 import app.nolva.data.Page
 import app.nolva.data.PageText
 import app.nolva.data.PageTextStore
+import app.nolva.data.PdfImportProgress
+import app.nolva.data.PdfImporter
 import app.nolva.data.RecognizedLine
 import app.nolva.data.TextMatch
 import java.io.File
@@ -96,7 +98,54 @@ class DocumentListViewModelTest {
         repository: FakeRepository,
         editor: DocumentEditor = FakeEditor(repository),
         textStore: PageTextStore = FakeTextStore(),
-    ) = DocumentListViewModel(repository, editor, textStore)
+        pdfImporter: PdfImporter = PdfImporter { _, _ -> error("unused") },
+    ) = DocumentListViewModel(repository, editor, textStore, pdfImporter)
+
+    @Test
+    fun `imported pdfs show progress, join the list and open`() = runTest(dispatcher) {
+        val repository = FakeRepository().apply { documents += document("a", "Old") }
+        val seen = mutableListOf<PdfImportProgress?>()
+        lateinit var viewModel: DocumentListViewModel
+        val importer = PdfImporter { _, onProgress ->
+            onProgress(PdfImportProgress(0, 2))
+            seen += viewModel.uiState.value.pdfImport
+            onProgress(PdfImportProgress(2, 2))
+            document("pdf", "Contrato").copy(pageCount = 2)
+        }
+        viewModel = viewModel(repository, pdfImporter = importer)
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        viewModel.importPdf("content://downloads/1")
+        assertEquals(PdfImportProgress(0, 0), viewModel.uiState.value.pdfImport)
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(listOf(PdfImportProgress(0, 2)), seen)
+        assertEquals(null, state.pdfImport)
+        assertEquals(listOf("pdf", "a"), state.documents.map { it.id })
+        assertEquals("pdf", state.openDocument?.id)
+        viewModel.documentOpened()
+        assertEquals(null, viewModel.uiState.value.openDocument)
+    }
+
+    @Test
+    fun `pdf import failures explain what went wrong`() = runTest(dispatcher) {
+        val cases = mapOf(
+            DocumentException.Unsupported("password") to DocumentListMessage.PdfUnreadable,
+            DocumentException.InvalidInput("0 pages") to DocumentListMessage.PdfTooLarge,
+            DocumentException.Storage("disk full") to DocumentListMessage.PdfImportFailed,
+        )
+        for ((error, expected) in cases) {
+            val viewModel = viewModel(FakeRepository(), pdfImporter = { _, _ -> throw error })
+            viewModel.importPdf("content://x")
+            advanceUntilIdle()
+
+            assertEquals(expected, viewModel.uiState.value.message)
+            assertEquals(null, viewModel.uiState.value.pdfImport)
+            assertEquals(null, viewModel.uiState.value.openDocument)
+        }
+    }
 
     private fun match(documentId: String, page: Int) = TextMatch(documentId, "$documentId-p$page", page, "…total $page…")
 

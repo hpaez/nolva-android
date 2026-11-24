@@ -40,6 +40,13 @@
 
     <!-- PDF export -->
     <string name="export">Exportar</string>
+    <string name="import_pdf">Importar PDF</string>
+    <string name="importing_pdf">Abriendo el PDF…</string>
+    <string name="importing_pdf_pages">Importando página %1$d de %2$d…</string>
+    <string name="imported_pdf_title">PDF importado</string>
+    <string name="error_pdf_unreadable">No se pudo abrir el PDF. Puede estar dañado o protegido con contraseña.</string>
+    <string name="error_pdf_too_large">El PDF está vacío o tiene más de 200 páginas.</string>
+    <string name="error_import_pdf">No se pudo importar el PDF.</string>
     <string name="export_pdf_size">PDF · %1$s</string>
     <string name="export_docx">Word</string>
     <string name="export_docx_with_images">Word con imágenes de las páginas</string>

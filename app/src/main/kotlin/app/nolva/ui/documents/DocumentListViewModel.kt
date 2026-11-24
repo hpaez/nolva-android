@@ -7,6 +7,8 @@ import app.nolva.data.DocumentEditor
 import app.nolva.data.DocumentException
 import app.nolva.data.DocumentRepository
 import app.nolva.data.PageTextStore
+import app.nolva.data.PdfImportProgress
+import app.nolva.data.PdfImporter
 import app.nolva.data.TextMatch
 import java.text.Normalizer
 import java.util.Locale
@@ -30,6 +32,10 @@ data class DocumentListUiState(
      */
     val contentMatches: Map<String, TextMatch> = emptyMap(),
     val isCreating: Boolean = false,
+    /** Progress of the PDF being imported; `null` when none is. */
+    val pdfImport: PdfImportProgress? = null,
+    /** A document to open right away (an imported PDF); cleared with [DocumentListViewModel.documentOpened]. */
+    val openDocument: Document? = null,
     /** One-shot message to show to the user; cleared with [DocumentListViewModel.messageShown]. */
     val message: DocumentListMessage? = null,
 ) {
@@ -53,12 +59,22 @@ private val diacritics = Regex("\\p{Mn}+")
 internal fun String.searchKey(): String =
     Normalizer.normalize(trim(), Normalizer.Form.NFD).replace(diacritics, "").lowercase(Locale.ROOT)
 
-enum class DocumentListMessage { LoadFailed, CreateFailed, InvalidTitle, RenameFailed, DeleteFailed }
+enum class DocumentListMessage {
+    LoadFailed,
+    CreateFailed,
+    InvalidTitle,
+    RenameFailed,
+    DeleteFailed,
+    PdfUnreadable,
+    PdfTooLarge,
+    PdfImportFailed,
+}
 
 class DocumentListViewModel(
     private val repository: DocumentRepository,
     private val editor: DocumentEditor,
     private val textStore: PageTextStore,
+    private val pdfImporter: PdfImporter,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DocumentListUiState())
@@ -139,6 +155,40 @@ class DocumentListViewModel(
                 }
             }
         }
+    }
+
+    /** Imports a PDF as a new document, then opens it. One import at a time. */
+    fun importPdf(uri: String) {
+        if (_uiState.value.pdfImport != null) return
+        _uiState.update { it.copy(pdfImport = PdfImportProgress(0, 0)) }
+        viewModelScope.launch {
+            val result = runSuspendCatching {
+                pdfImporter.import(uri) { progress -> _uiState.update { it.copy(pdfImport = progress) } }
+            }
+            _uiState.update { state ->
+                result.fold(
+                    onSuccess = { document ->
+                        state.copy(
+                            pdfImport = null,
+                            documents = listOf(document) + state.documents.filterNot { it.id == document.id },
+                            openDocument = document,
+                        )
+                    },
+                    onFailure = { error ->
+                        val message = when (error) {
+                            is DocumentException.Unsupported -> DocumentListMessage.PdfUnreadable
+                            is DocumentException.InvalidInput -> DocumentListMessage.PdfTooLarge
+                            else -> DocumentListMessage.PdfImportFailed
+                        }
+                        state.copy(pdfImport = null, message = message)
+                    },
+                )
+            }
+        }
+    }
+
+    fun documentOpened() {
+        _uiState.update { it.copy(openDocument = null) }
     }
 
     fun search(query: String) {
