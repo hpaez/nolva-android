@@ -15,6 +15,8 @@ data class Document(
     val pageCount: Int,
     /** First page's image (processed when it has one), for thumbnails. */
     val coverFile: File? = null,
+    /** When it was moved to the trash; `null` while it isn't. */
+    val trashedAt: Instant? = null,
 )
 
 data class Page(

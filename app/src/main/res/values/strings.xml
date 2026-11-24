@@ -64,6 +64,30 @@
     <!-- PDF export -->
     <string name="export">Export</string>
     <string name="import_pdf">Import PDF</string>
+    <string name="duplicate">Duplicate</string>
+    <string name="copy_title">%1$s (copy)</string>
+    <string name="moved_to_trash">“%1$s” moved to the trash</string>
+    <string name="undo">Undo</string>
+    <string name="trash">Trash</string>
+    <string name="trash_empty">The trash is empty. Deleted documents stay here for 30 days.</string>
+    <string name="trash_explanation">Documents here are deleted for good after 30 days.</string>
+    <plurals name="trash_days_left">
+        <item quantity="one">Deleted in %1$d day</item>
+        <item quantity="other">Deleted in %1$d days</item>
+    </plurals>
+    <string name="restore">Restore</string>
+    <string name="delete_forever">Delete for good</string>
+    <string name="document_restored">“%1$s” restored</string>
+    <string name="empty_trash">Empty trash</string>
+    <string name="empty_trash_title">Empty the trash?</string>
+    <plurals name="empty_trash_body">
+        <item quantity="one">%1$d document will be deleted for good. This can\'t be undone.</item>
+        <item quantity="other">%1$d documents will be deleted for good. This can\'t be undone.</item>
+    </plurals>
+    <string name="error_load_trash">Couldn\'t load the trash.</string>
+    <string name="error_restore_document">Couldn\'t restore the document.</string>
+    <string name="error_duplicate_document">Couldn\'t duplicate the document.</string>
+    <string name="error_empty_trash">Couldn\'t empty the trash.</string>
     <string name="importing_pdf">Opening the PDF…</string>
     <string name="importing_pdf_pages">Importing page %1$d of %2$d…</string>
     <string name="imported_pdf_title">Imported PDF</string>
@@ -115,7 +139,7 @@
     <string name="delete">Delete</string>
     <string name="save">Save</string>
     <string name="rename_document">Rename document</string>
-    <string name="delete_document_title">Delete document?</string>
+    <string name="delete_document_title">Delete for good?</string>
     <!-- %1$s: document title -->
     <string name="delete_document_body">“%1$s” and all its pages will be deleted permanently. This can\'t be undone.</string>
     <!-- %1$d: 1-based page number -->

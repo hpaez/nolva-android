@@ -89,6 +89,7 @@ class CaptureViewModelTest {
 
         override suspend fun renameDocument(documentId: String, title: String): Document = error("unused")
         override suspend fun deleteDocument(documentId: String) = error("unused")
+        override suspend fun duplicateDocument(documentId: String, title: String): Document = error("unused")
         override suspend fun movePage(pageId: String, toPosition: Int): List<Page> = error("unused")
     }
 

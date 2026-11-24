@@ -20,6 +20,8 @@ import app.nolva.ui.document.DocumentDetailRoute
 import app.nolva.ui.document.DocumentDetailViewModel
 import app.nolva.ui.documents.DocumentListRoute
 import app.nolva.ui.documents.DocumentListViewModel
+import app.nolva.ui.trash.TrashRoute
+import app.nolva.ui.trash.TrashViewModel
 import app.nolva.ui.viewer.PageViewerRoute
 import app.nolva.ui.viewer.PageViewerViewModel
 import kotlinx.coroutines.Dispatchers
@@ -28,6 +30,9 @@ import kotlinx.serialization.Serializable
 /** Back stack destinations. Serializable so the stack survives process death. */
 @Serializable
 data object DocumentListKey : NavKey
+
+@Serializable
+data object TrashKey : NavKey
 
 @Serializable
 data class DocumentDetailKey(val documentId: String, val title: String) : NavKey
@@ -60,17 +65,31 @@ fun NolvaNavigation(container: AppContainer, modifier: Modifier = Modifier) {
                 DocumentListRoute(
                     viewModel = viewModel(
                         factory = viewModelFactory {
-                            initializer { DocumentListViewModel(
-                                    container.documentRepository,
-                                    container.documentEditor,
-                                    container.pageTextStore,
-                                    container.pdfImporter,
-                                ) }
+                            initializer {
+                                DocumentListViewModel(
+                                    repository = container.documentRepository,
+                                    editor = container.documentEditor,
+                                    textStore = container.pageTextStore,
+                                    pdfImporter = container.pdfImporter,
+                                    trash = container.documentTrash,
+                                )
+                            }
                         },
                     ),
                     onOpenDocument = { document ->
                         backStack.add(DocumentDetailKey(document.id, document.title))
                     },
+                    onOpenTrash = { backStack.add(TrashKey) },
+                )
+            }
+            entry<TrashKey> {
+                TrashRoute(
+                    viewModel = viewModel(
+                        factory = viewModelFactory {
+                            initializer { TrashViewModel(container.documentTrash, container.documentEditor) }
+                        },
+                    ),
+                    onBack = { backStack.removeLastOrNull() },
                 )
             }
             entry<DocumentDetailKey> { key ->

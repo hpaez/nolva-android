@@ -22,6 +22,7 @@ fun interface OrphanFileCleaner {
 
 /**
  * Housekeeping to run once per app start, in the background:
+ * - documents in the trash for longer than [DocumentTrash.RETENTION];
  * - page images left behind by failed deletions or interrupted imports
  *   (the core keeps anything from the last hour, so it's safe while the
  *   app is in use);
@@ -36,8 +37,17 @@ class StorageMaintenance(
     private val scratchDirs: List<File>,
     private val ioDispatcher: CoroutineDispatcher,
     private val now: () -> Long = System::currentTimeMillis,
+    /** Deletes expired trash; @return how many documents. */
+    private val purgeExpiredTrash: suspend () -> Int = { 0 },
 ) {
     suspend fun run(): CleanupResult {
+        try {
+            purgeExpiredTrash()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Retried next start.
+        }
         val pages = try {
             cleaner.removeOrphanFiles()
         } catch (e: CancellationException) {

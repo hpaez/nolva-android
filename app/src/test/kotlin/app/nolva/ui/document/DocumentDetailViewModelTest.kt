@@ -61,6 +61,7 @@ class DocumentDetailViewModelTest {
 
         override suspend fun renameDocument(documentId: String, title: String): Document = error("unused")
         override suspend fun deleteDocument(documentId: String) = error("unused")
+        override suspend fun duplicateDocument(documentId: String, title: String): Document = error("unused")
 
         override suspend fun deletePage(pageId: String) {
             failure?.let { throw it }

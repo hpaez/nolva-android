@@ -4,6 +4,7 @@ import app.nolva.data.Document
 import app.nolva.data.DocumentEditor
 import app.nolva.data.DocumentException
 import app.nolva.data.DocumentRepository
+import app.nolva.data.DocumentTrash
 import app.nolva.data.Page
 import app.nolva.data.PageText
 import app.nolva.data.PageTextStore
@@ -74,9 +75,39 @@ class DocumentListViewModelTest {
             repository.documents.removeAll { it.id == documentId }
         }
 
+        override suspend fun duplicateDocument(documentId: String, title: String): Document {
+            failure?.let { throw it }
+            return document("copy-of-$documentId", title).also { repository.documents.add(0, it) }
+        }
+
         override suspend fun deletePage(pageId: String) = error("unused")
 
         override suspend fun movePage(pageId: String, toPosition: Int): List<Page> = error("unused")
+    }
+
+    /** Moves documents between the repository and its own trashed list. */
+    private class FakeTrash(private val repository: FakeRepository) : DocumentTrash {
+        var failure: Exception? = null
+        val trashed = mutableListOf<Document>()
+
+        override suspend fun moveToTrash(documentId: String) {
+            failure?.let { throw it }
+            val document = repository.documents.first { it.id == documentId }
+            repository.documents.remove(document)
+            trashed += document
+        }
+
+        override suspend fun restore(documentId: String): Document {
+            failure?.let { throw it }
+            val document = trashed.first { it.id == documentId }
+            trashed.remove(document)
+            repository.documents += document
+            return document
+        }
+
+        override suspend fun listTrash(): List<Document> = trashed.toList()
+        override suspend fun emptyTrash(): Int = error("unused")
+        override suspend fun purgeExpired(): Int = error("unused")
     }
 
     /** Returns [matches] for any query and records the queries it got. */
@@ -99,7 +130,8 @@ class DocumentListViewModelTest {
         editor: DocumentEditor = FakeEditor(repository),
         textStore: PageTextStore = FakeTextStore(),
         pdfImporter: PdfImporter = PdfImporter { _, _ -> error("unused") },
-    ) = DocumentListViewModel(repository, editor, textStore, pdfImporter)
+        trash: DocumentTrash = FakeTrash(repository),
+    ) = DocumentListViewModel(repository, editor, textStore, pdfImporter, trash)
 
     @Test
     fun `imported pdfs show progress, join the list and open`() = runTest(dispatcher) {
@@ -220,23 +252,79 @@ class DocumentListViewModelTest {
     }
 
     @Test
-    fun `deleted documents leave the list`() = runTest(dispatcher) {
-        val repository = FakeRepository().apply { documents += listOf(document("a", "Keep"), document("b", "Drop")) }
-        val viewModel = viewModel(repository)
+    fun `deleted documents go to the trash and can come back`() = runTest(dispatcher) {
+        val older = document("a", "Older").copy(updatedAt = Instant.ofEpochMilli(1))
+        val newer = document("b", "Newer").copy(updatedAt = Instant.ofEpochMilli(2))
+        val repository = FakeRepository().apply { documents += listOf(newer, older) }
+        val trash = FakeTrash(repository)
+        val viewModel = viewModel(repository, trash = trash)
         viewModel.refresh()
         advanceUntilIdle()
 
         viewModel.deleteDocument("b")
         advanceUntilIdle()
 
-        assertEquals(listOf("Keep"), viewModel.uiState.value.documents.map { it.title })
+        assertEquals(listOf("Older"), viewModel.uiState.value.documents.map { it.title })
+        assertEquals(listOf("b"), trash.trashed.map { it.id })
+        assertEquals("b", viewModel.uiState.value.trashedDocument?.id)
+
+        viewModel.undoTrash()
+        assertEquals(null, viewModel.uiState.value.trashedDocument)
+        advanceUntilIdle()
+
+        assertEquals(listOf("Newer", "Older"), viewModel.uiState.value.documents.map { it.title })
+        assertEquals(emptyList<Document>(), trash.trashed)
+    }
+
+    @Test
+    fun `the trash notice can be dismissed`() = runTest(dispatcher) {
+        val repository = FakeRepository().apply { documents += document("a", "Lease") }
+        val viewModel = viewModel(repository)
+        viewModel.refresh()
+        advanceUntilIdle()
+        viewModel.deleteDocument("a")
+        advanceUntilIdle()
+
+        viewModel.trashNoticeShown()
+        viewModel.undoTrash()
+        advanceUntilIdle()
+
+        assertEquals(emptyList<Document>(), viewModel.uiState.value.documents)
+    }
+
+    @Test
+    fun `duplicates go to the top of the list`() = runTest(dispatcher) {
+        val repository = FakeRepository().apply { documents += document("a", "Lease") }
+        val viewModel = viewModel(repository)
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        viewModel.duplicateDocument("a", "Lease (copia)")
+        advanceUntilIdle()
+
+        assertEquals(listOf("Lease (copia)", "Lease"), viewModel.uiState.value.documents.map { it.title })
+    }
+
+    @Test
+    fun `failed duplicates report`() = runTest(dispatcher) {
+        val repository = FakeRepository().apply { documents += document("a", "Lease") }
+        val editor = FakeEditor(repository).apply { failure = DocumentException.Storage("disk") }
+        val viewModel = viewModel(repository, editor)
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        viewModel.duplicateDocument("a", "Copy")
+        advanceUntilIdle()
+
+        assertEquals(DocumentListMessage.DuplicateFailed, viewModel.uiState.value.message)
+        assertEquals(1, viewModel.uiState.value.documents.size)
     }
 
     @Test
     fun `deleting a document that is already gone still removes it`() = runTest(dispatcher) {
         val repository = FakeRepository().apply { documents += document("a", "Ghost") }
-        val editor = FakeEditor(repository).apply { failure = DocumentException.NotFound("a") }
-        val viewModel = viewModel(repository, editor)
+        val trash = FakeTrash(repository).apply { failure = DocumentException.NotFound("a") }
+        val viewModel = viewModel(repository, trash = trash)
         viewModel.refresh()
         advanceUntilIdle()
 
@@ -251,8 +339,8 @@ class DocumentListViewModelTest {
     @Test
     fun `other delete failures keep the document and report`() = runTest(dispatcher) {
         val repository = FakeRepository().apply { documents += document("a", "Lease") }
-        val editor = FakeEditor(repository).apply { failure = DocumentException.Storage("disk") }
-        val viewModel = viewModel(repository, editor)
+        val trash = FakeTrash(repository).apply { failure = DocumentException.Storage("disk") }
+        val viewModel = viewModel(repository, trash = trash)
         viewModel.refresh()
         advanceUntilIdle()
 

@@ -48,6 +48,24 @@ class StorageMaintenanceTest {
     }
 
     @Test
+    fun `purges expired trash, and goes on if that fails`() = runTest(dispatcher) {
+        var purges = 0
+        val maintenance = StorageMaintenance(
+            cleaner = { CleanupResult(1, 1) },
+            scratchDirs = emptyList(),
+            ioDispatcher = dispatcher,
+            now = { now },
+            purgeExpiredTrash = {
+                purges++
+                throw DocumentException.Storage("disk")
+            },
+        )
+
+        assertEquals(CleanupResult(1, 1), maintenance.run())
+        assertEquals(1, purges)
+    }
+
+    @Test
     fun `a failing core cleanup still clears scratch files`() = runTest(dispatcher) {
         val imports = tempFolder.root.resolve("imports")
         val old = file(imports, "page-1.jpg", ageMs = 2 * StorageMaintenance.SCRATCH_MAX_AGE_MS)

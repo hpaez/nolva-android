@@ -20,6 +20,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
@@ -35,8 +36,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -51,6 +54,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -78,6 +82,7 @@ import java.time.format.FormatStyle
 fun DocumentListRoute(
     viewModel: DocumentListViewModel,
     onOpenDocument: (Document) -> Unit,
+    onOpenTrash: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -101,6 +106,10 @@ fun DocumentListRoute(
         onDeleteDocument = viewModel::deleteDocument,
         onSearch = viewModel::search,
         onImportPdf = { pickPdf.launch(arrayOf("application/pdf")) },
+        onUndoTrash = viewModel::undoTrash,
+        onTrashNoticeShown = viewModel::trashNoticeShown,
+        onDuplicateDocument = viewModel::duplicateDocument,
+        onOpenTrash = onOpenTrash,
         modifier = modifier,
     )
 }
@@ -117,12 +126,31 @@ fun DocumentListScreen(
     onDeleteDocument: (documentId: String) -> Unit = {},
     onSearch: (query: String) -> Unit = {},
     onImportPdf: () -> Unit = {},
+    onUndoTrash: () -> Unit = {},
+    onTrashNoticeShown: () -> Unit = {},
+    onDuplicateDocument: (documentId: String, title: String) -> Unit = { _, _ -> },
+    onOpenTrash: () -> Unit = {},
 ) {
     var showCreateDialog by rememberSaveable { mutableStateOf(false) }
     // Ids rather than documents so the dialogs survive configuration changes.
     var renamingId by rememberSaveable { mutableStateOf<String?>(null) }
-    var deletingId by rememberSaveable { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // Deleting is undoable, so it needs no confirmation: the notice offers "Undo".
+    val trashedText = uiState.trashedDocument?.let { stringResource(R.string.moved_to_trash, it.title) }
+    val undoLabel = stringResource(R.string.undo)
+    LaunchedEffect(uiState.trashedDocument) {
+        if (trashedText != null) {
+            val result = snackbarHostState.showSnackbar(
+                message = trashedText,
+                actionLabel = undoLabel,
+                duration = SnackbarDuration.Long,
+            )
+            if (result == SnackbarResult.ActionPerformed) onUndoTrash() else onTrashNoticeShown()
+        }
+    }
+    val resources = LocalResources.current
+    val copyTitle = { title: String -> resources.getString(R.string.copy_title, title).take(MAX_TITLE_LENGTH) }
 
     val messageText = uiState.message?.let { stringResource(it.textRes()) }
     LaunchedEffect(uiState.message) {
@@ -147,6 +175,9 @@ fun DocumentListScreen(
                     actions = {
                         TextButton(onClick = onImportPdf, enabled = uiState.pdfImport == null) {
                             Text(stringResource(R.string.import_pdf))
+                        }
+                        IconButton(onClick = onOpenTrash) {
+                            Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.trash))
                         }
                     },
                 )
@@ -200,7 +231,8 @@ fun DocumentListScreen(
                         contentPadding = PaddingValues(bottom = innerPadding.calculateBottomPadding()),
                         onOpenDocument = onOpenDocument,
                         onRename = { renamingId = it.id },
-                        onDelete = { deletingId = it.id },
+                        onDuplicate = { onDuplicateDocument(it.id, copyTitle(it.title)) },
+                        onDelete = { onDeleteDocument(it.id) },
                     )
                 }
             }
@@ -232,27 +264,6 @@ fun DocumentListScreen(
             onDismiss = { renamingId = null },
         )
     }
-
-    uiState.documents.find { it.id == deletingId }?.let { document ->
-        AlertDialog(
-            onDismissRequest = { deletingId = null },
-            title = { Text(stringResource(R.string.delete_document_title)) },
-            text = { Text(stringResource(R.string.delete_document_body, document.title)) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        deletingId = null
-                        onDeleteDocument(document.id)
-                    },
-                ) {
-                    Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { deletingId = null }) { Text(stringResource(R.string.cancel)) }
-            },
-        )
-    }
 }
 
 @Composable
@@ -262,6 +273,7 @@ private fun DocumentList(
     contentPadding: PaddingValues,
     onOpenDocument: (Document) -> Unit,
     onRename: (Document) -> Unit,
+    onDuplicate: (Document) -> Unit,
     onDelete: (Document) -> Unit,
 ) {
     LazyColumn(
@@ -281,6 +293,7 @@ private fun DocumentList(
                 match = matches[document.id],
                 onClick = { onOpenDocument(document) },
                 onRename = { onRename(document) },
+                onDuplicate = { onDuplicate(document) },
                 onDelete = { onDelete(document) },
             )
         }
@@ -293,13 +306,14 @@ private fun DocumentRow(
     match: TextMatch?,
     onClick: () -> Unit,
     onRename: () -> Unit,
+    onDuplicate: () -> Unit,
     onDelete: () -> Unit,
 ) {
     OutlinedCard(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Cover(document)
             DocumentSummary(document, match, Modifier.weight(1f))
-            DocumentMenu(onRename = onRename, onDelete = onDelete)
+            DocumentMenu(onRename = onRename, onDuplicate = onDuplicate, onDelete = onDelete)
         }
     }
 }
@@ -387,7 +401,7 @@ private fun NoResults(query: String) {
 }
 
 @Composable
-private fun DocumentMenu(onRename: () -> Unit, onDelete: () -> Unit) {
+private fun DocumentMenu(onRename: () -> Unit, onDuplicate: () -> Unit, onDelete: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { expanded = true }) {
@@ -399,6 +413,13 @@ private fun DocumentMenu(onRename: () -> Unit, onDelete: () -> Unit) {
                 onClick = {
                     expanded = false
                     onRename()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.duplicate)) },
+                onClick = {
+                    expanded = false
+                    onDuplicate()
                 },
             )
             DropdownMenuItem(
@@ -518,6 +539,8 @@ private fun DocumentListMessage.textRes(): Int = when (this) {
     DocumentListMessage.PdfUnreadable -> R.string.error_pdf_unreadable
     DocumentListMessage.PdfTooLarge -> R.string.error_pdf_too_large
     DocumentListMessage.PdfImportFailed -> R.string.error_import_pdf
+    DocumentListMessage.RestoreFailed -> R.string.error_restore_document
+    DocumentListMessage.DuplicateFailed -> R.string.error_duplicate_document
 }
 
 private val previewDocuments = listOf(
