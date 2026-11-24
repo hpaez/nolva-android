@@ -7,8 +7,18 @@ import app.nolva.data.DocumentRepository
 import app.nolva.data.Page
 import app.nolva.data.PageImporter
 import app.nolva.data.PaperSize
+import app.nolva.data.DOCX_MIME_TYPE
+import app.nolva.data.DocxExport
+import app.nolva.data.DocxExporter
+import app.nolva.data.PageText
+import app.nolva.data.PageTextStore
 import app.nolva.data.PdfExport
 import app.nolva.data.PdfExporter
+import app.nolva.data.RecognizedLine
+import app.nolva.data.TextMatch
+import app.nolva.data.TextRecognitionRunner
+import app.nolva.data.TextRecognizer
+import app.nolva.data.TextRect
 import java.io.File
 import java.time.Instant
 import kotlinx.coroutines.Dispatchers
@@ -91,20 +101,86 @@ class DocumentDetailViewModelTest {
     @get:Rule
     val tempFolder = TemporaryFolder()
 
+    /** Pages of "doc" stay pending until recognized; recognition yields one line each. */
+    private class FakeTextStore(pending: List<Page> = emptyList()) : PageTextStore {
+        val pending = pending.toMutableList()
+
+        override suspend fun pagesNeedingText(limit: Int): List<Page> = pending.take(limit)
+        override suspend fun savePageText(pageId: String, image: File, lines: List<RecognizedLine>): PageText {
+            pending.removeAll { it.id == pageId }
+            return PageText(pageId, "", lines)
+        }
+        override suspend fun getPageText(pageId: String): PageText? = null
+        override suspend fun searchText(query: String): List<TextMatch> = emptyList()
+    }
+
+    /** Reports as pending text whatever the store still has pending for "doc". */
+    private class FakeDocxExporter(private val store: FakeTextStore) : DocxExporter {
+        val exported = mutableListOf<Pair<File, Boolean>>()
+
+        override suspend fun exportDocx(documentId: String, output: File, includeImages: Boolean): DocxExport {
+            exported += output to includeImages
+            val pending = store.pending.count { it.documentId == documentId }
+            return DocxExport(output, pageCount = 2, sizeBytes = 9, pagesPendingText = pending)
+        }
+    }
+
     private fun viewModel(
         repository: DocumentRepository,
         importer: PageImporter,
         exporter: PdfExporter = FakeExporter(),
         editor: DocumentEditor = FakeEditor(),
+        textStore: FakeTextStore = FakeTextStore(),
+        recognizer: TextRecognizer = TextRecognizer { listOf(RecognizedLine(0, "x", TextRect(0f, 0f, 1f, 0.1f))) },
+        docxExporter: DocxExporter = FakeDocxExporter(textStore),
     ) = DocumentDetailViewModel(
         "doc",
         repository,
         editor,
         importer,
         exporter,
+        docxExporter,
+        TextRecognitionRunner(textStore, recognizer),
         tempFolder.root.resolve("exports"),
         dispatcher,
     )
+
+    @Test
+    fun `word export reads pending pages of this document first`() = runTest(dispatcher) {
+        val other = page("z", 0).copy(documentId = "other")
+        val store = FakeTextStore(listOf(page("a", 0), other))
+        val docx = FakeDocxExporter(store)
+        val viewModel = viewModel(FakeRepository(listOf(page("a", 0))), FakeImporter(), textStore = store, docxExporter = docx)
+
+        viewModel.exportDocx("Carta 1/2", includeImages = true)
+        advanceUntilIdle()
+
+        assertEquals(listOf("z"), store.pending.map { it.id })
+        val (file, images) = docx.exported.single()
+        assertEquals("Carta 1_2.docx" to true, file.name to images)
+        val share = viewModel.uiState.value.pendingShare!!
+        assertEquals(DOCX_MIME_TYPE, share.mimeType)
+        assertEquals(null, viewModel.uiState.value.message)
+    }
+
+    @Test
+    fun `word export still runs when recognition fails, and says what is missing`() = runTest(dispatcher) {
+        val store = FakeTextStore(listOf(page("a", 0), page("b", 1)))
+        val viewModel = viewModel(
+            FakeRepository(),
+            FakeImporter(),
+            textStore = store,
+            recognizer = { throw IllegalStateException("ML Kit unavailable") },
+        )
+
+        viewModel.exportDocx("Carta", includeImages = false)
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(DocumentDetailMessage.DocxMissingText, state.message)
+        assertEquals(2, state.pagesMissingText)
+        assertFalse(state.isExporting)
+    }
 
     @Test
     fun `deleting a page renumbers the rest`() = runTest(dispatcher) {

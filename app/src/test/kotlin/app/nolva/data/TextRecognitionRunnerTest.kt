@@ -82,6 +82,17 @@ class TextRecognitionRunnerTest {
     }
 
     @Test
+    fun `can recognize just one document`() = runTest {
+        val other = page("x").copy(documentId = "other")
+        val store = FakeStore(listOf(page("p1"), other, page("p2")))
+        val runner = TextRecognitionRunner(store, { listOf(line) })
+
+        assertEquals(2, runner.runForDocument("doc"))
+        assertEquals(setOf("p1", "p2"), store.saved.keys)
+        assertEquals(listOf("x"), store.pending.map { it.id })
+    }
+
+    @Test
     fun `stops when asked`() = runTest {
         val store = FakeStore((1..5).map { page("p$it") })
         var calls = 0

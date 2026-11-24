@@ -62,7 +62,15 @@
     <string name="open_settings">Open settings</string>
 
     <!-- PDF export -->
-    <string name="export_pdf">PDF</string>
+    <string name="export">Export</string>
+    <string name="export_pdf_size">PDF · %1$s</string>
+    <string name="export_docx">Word</string>
+    <string name="export_docx_with_images">Word with page images</string>
+    <string name="docx_missing_text_some">Some pages have no text yet.</string>
+    <plurals name="docx_missing_text">
+        <item quantity="one">%1$d page couldn\'t be read and is empty in the Word file.</item>
+        <item quantity="other">%1$d pages couldn\'t be read and are empty in the Word file.</item>
+    </plurals>
     <string name="paper_a4">A4</string>
     <string name="paper_letter">Letter</string>
     <string name="paper_legal">Legal</string>
@@ -115,7 +123,7 @@
     <string name="error_invalid_title">That title isn\'t valid.</string>
     <string name="error_load_pages">Couldn\'t load the pages.</string>
     <string name="error_import_page">Couldn\'t add the image.</string>
-    <string name="error_export_pdf">Couldn\'t create the PDF.</string>
+    <string name="error_export">Couldn\'t export the document.</string>
     <string name="error_capture">Couldn\'t take the photo. Try again.</string>
     <string name="error_rename_document">Couldn\'t rename the document.</string>
     <string name="error_delete_document">Couldn\'t delete the document.</string>

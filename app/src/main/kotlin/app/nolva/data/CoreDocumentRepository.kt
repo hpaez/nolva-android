@@ -1,6 +1,7 @@
 package app.nolva.data
 
 import app.nolva.core.DocumentInfo
+import app.nolva.core.DocxOptions
 import app.nolva.core.NolvaCoreInterface
 import app.nolva.core.NolvaException
 import app.nolva.core.PageCorners
@@ -33,7 +34,13 @@ class CoreDocumentRepository(
     private val ioDispatcher: CoroutineDispatcher,
     private val onPageImagesChanged: () -> Unit = {},
     coreFactory: () -> NolvaCoreInterface,
-) : DocumentRepository, DocumentEditor, PageCropper, PdfExporter, OrphanFileCleaner, PageTextStore {
+) : DocumentRepository,
+    DocumentEditor,
+    PageCropper,
+    PdfExporter,
+    DocxExporter,
+    OrphanFileCleaner,
+    PageTextStore {
 
     private val core by lazy(coreFactory)
 
@@ -78,6 +85,11 @@ class CoreDocumentRepository(
     override suspend fun removeOrphanFiles(): CleanupResult = call {
         val info = core.removeOrphanFiles()
         CleanupResult(info.filesRemoved.toInt(), info.bytesFreed.toLong())
+    }
+
+    override suspend fun exportDocx(documentId: String, output: File, includeImages: Boolean): DocxExport = call {
+        val info = core.exportDocx(documentId, output.absolutePath, DocxOptions(includeImages = includeImages))
+        DocxExport(output, info.pageCount.toInt(), info.sizeBytes.toLong(), info.pagesPendingText.toInt())
     }
 
     override suspend fun getPage(pageId: String): Page = call {

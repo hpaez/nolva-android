@@ -79,6 +79,8 @@ fun NolvaNavigation(container: AppContainer, modifier: Modifier = Modifier) {
                                     editor = container.documentEditor,
                                     importer = container.pageImporter,
                                     exporter = container.pdfExporter,
+                                    docxExporter = container.docxExporter,
+                                    textRecognition = container.textRecognitionRunner,
                                     exportDir = container.exportDir,
                                     ioDispatcher = Dispatchers.IO,
                                 )

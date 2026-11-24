@@ -26,6 +26,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -51,6 +52,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -90,7 +92,7 @@ fun DocumentDetailRoute(
     val context = LocalContext.current
     LaunchedEffect(uiState.pendingShare) {
         val export = uiState.pendingShare ?: return@LaunchedEffect
-        shareFile(context, export.file, mimeType = "application/pdf", subject = title)
+        shareFile(context, export.file, mimeType = export.mimeType, subject = title)
         viewModel.shareHandled()
     }
 
@@ -105,6 +107,7 @@ fun DocumentDetailRoute(
         },
         onMessageShown = viewModel::messageShown,
         onExportPdf = { paperSize -> viewModel.exportPdf(title, paperSize) },
+        onExportDocx = { includeImages -> viewModel.exportDocx(title, includeImages) },
         onDeletePage = viewModel::deletePage,
         onMovePage = viewModel::movePage,
         modifier = modifier,
@@ -123,13 +126,20 @@ fun DocumentDetailScreen(
     modifier: Modifier = Modifier,
     onOpenPage: (Int) -> Unit = {},
     onExportPdf: (PaperSize) -> Unit = {},
+    onExportDocx: (includeImages: Boolean) -> Unit = {},
     onDeletePage: (pageId: String) -> Unit = {},
     onMovePage: (pageId: String, toPosition: Int) -> Unit = { _, _ -> },
 ) {
-    var showPaperMenu by remember { mutableStateOf(false) }
+    var showExportMenu by remember { mutableStateOf(false) }
     var deletingPageId by rememberSaveable { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
-    val messageText = uiState.message?.let { stringResource(it.textRes()) }
+    val messageText = uiState.message?.let {
+        if (it == DocumentDetailMessage.DocxMissingText) {
+            pluralStringResource(R.plurals.docx_missing_text, uiState.pagesMissingText, uiState.pagesMissingText)
+        } else {
+            stringResource(it.textRes())
+        }
+    }
     LaunchedEffect(uiState.message) {
         if (messageText != null) {
             snackbarHostState.showSnackbar(messageText)
@@ -154,21 +164,36 @@ fun DocumentDetailScreen(
                         }
                         Box {
                             TextButton(
-                                onClick = { showPaperMenu = true },
+                                onClick = { showExportMenu = true },
                                 enabled = uiState.pages.isNotEmpty() && !uiState.isExporting,
                             ) {
-                                Text(stringResource(R.string.export_pdf))
+                                Text(stringResource(R.string.export))
                             }
-                            DropdownMenu(expanded = showPaperMenu, onDismissRequest = { showPaperMenu = false }) {
+                            DropdownMenu(expanded = showExportMenu, onDismissRequest = { showExportMenu = false }) {
                                 PaperSize.entries.forEach { size ->
                                     DropdownMenuItem(
-                                        text = { Text(stringResource(size.labelRes())) },
+                                        text = { Text(stringResource(R.string.export_pdf_size, stringResource(size.labelRes()))) },
                                         onClick = {
-                                            showPaperMenu = false
+                                            showExportMenu = false
                                             onExportPdf(size)
                                         },
                                     )
                                 }
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.export_docx)) },
+                                    onClick = {
+                                        showExportMenu = false
+                                        onExportDocx(false)
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.export_docx_with_images)) },
+                                    onClick = {
+                                        showExportMenu = false
+                                        onExportDocx(true)
+                                    },
+                                )
                             }
                         }
                     },
@@ -411,7 +436,9 @@ private fun DocumentDetailMessage.textRes(): Int = when (this) {
     DocumentDetailMessage.LoadFailed -> R.string.error_load_pages
     DocumentDetailMessage.ImportFailed -> R.string.error_import_page
     DocumentDetailMessage.UnsupportedImage -> R.string.error_unsupported_image
-    DocumentDetailMessage.ExportFailed -> R.string.error_export_pdf
+    DocumentDetailMessage.ExportFailed -> R.string.error_export
+    // Shown with its page count instead; see DocumentDetailScreen.
+    DocumentDetailMessage.DocxMissingText -> R.string.docx_missing_text_some
     DocumentDetailMessage.DeletePageFailed -> R.string.error_delete_page
     DocumentDetailMessage.MovePageFailed -> R.string.error_move_page
 }

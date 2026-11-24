@@ -2,6 +2,8 @@ package app.nolva.data
 
 import app.nolva.core.CleanupInfo
 import app.nolva.core.DocumentInfo
+import app.nolva.core.DocxExportInfo
+import app.nolva.core.DocxOptions
 import app.nolva.core.NolvaCoreInterface
 import app.nolva.core.NolvaException
 import app.nolva.core.PageCorners
@@ -73,6 +75,13 @@ class CoreDocumentRepositoryTest {
         override fun getPageText(pageId: String): PageTextInfo? = null
 
         override fun searchText(query: String): List<TextSearchHit> = emptyList()
+
+        var docxOptions: DocxOptions? = null
+
+        override fun exportDocx(documentId: String, outputPath: String, options: DocxOptions): DocxExportInfo {
+            docxOptions = options
+            return DocxExportInfo(pageCount = 3u, sizeBytes = 2048u, pagesPendingText = 1u)
+        }
 
         override fun removeOrphanFiles(): CleanupInfo = CleanupInfo(filesRemoved = 3u, bytesFreed = 4_096u)
 
@@ -181,6 +190,17 @@ class CoreDocumentRepositoryTest {
         repository.listPages("doc-1")
 
         assertEquals(1, scheduled)
+    }
+
+    @Test
+    fun `exports word files`() = runTest(dispatcher) {
+        val core = FakeCore()
+        val repository = CoreDocumentRepository(dispatcher) { core }
+
+        val export = repository.exportDocx("doc-1", File("/tmp/out.docx"), includeImages = true)
+
+        assertEquals(DocxExport(File("/tmp/out.docx"), 3, 2048, 1), export)
+        assertEquals(DocxOptions(includeImages = true), core.docxOptions)
     }
 
     @Test
