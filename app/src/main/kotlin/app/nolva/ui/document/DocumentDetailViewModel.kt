@@ -8,8 +8,11 @@ import app.nolva.data.DocumentRepository
 import app.nolva.data.Page
 import app.nolva.data.PageImporter
 import app.nolva.data.PaperSize
-import app.nolva.data.PdfExport
+import app.nolva.data.DOCX_MIME_TYPE
+import app.nolva.data.DocxExporter
 import app.nolva.data.PdfExporter
+import app.nolva.data.TextRecognitionRunner
+import app.nolva.data.docxFileName
 import app.nolva.data.pdfFileName
 import java.io.File
 import kotlinx.coroutines.CancellationException
@@ -31,16 +34,22 @@ data class DocumentDetailUiState(
     val message: DocumentDetailMessage? = null,
     val isExporting: Boolean = false,
     /** A finished export waiting to be handed to the share sheet. */
-    val pendingShare: PdfExport? = null,
+    val pendingShare: ExportedFile? = null,
+    /** Pages the last Word export had no text for; shown with [DocumentDetailMessage.DocxMissingText]. */
+    val pagesMissingText: Int = 0,
 ) {
     val isImporting: Boolean get() = pendingImports > 0
 }
+
+/** An exported file and its MIME type, for the share sheet. */
+data class ExportedFile(val file: File, val mimeType: String)
 
 enum class DocumentDetailMessage {
     LoadFailed,
     ImportFailed,
     UnsupportedImage,
     ExportFailed,
+    DocxMissingText,
     DeletePageFailed,
     MovePageFailed,
 }
@@ -54,6 +63,8 @@ class DocumentDetailViewModel(
     private val editor: DocumentEditor,
     private val importer: PageImporter,
     private val exporter: PdfExporter,
+    private val docxExporter: DocxExporter,
+    private val textRecognition: TextRecognitionRunner,
     private val exportDir: File,
     private val ioDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
@@ -152,7 +163,49 @@ class DocumentDetailViewModel(
             }
             _uiState.update { state ->
                 result.fold(
-                    onSuccess = { state.copy(isExporting = false, pendingShare = it) },
+                    onSuccess = {
+                        state.copy(isExporting = false, pendingShare = ExportedFile(it.file, "application/pdf"))
+                    },
+                    onFailure = { state.copy(isExporting = false, message = DocumentDetailMessage.ExportFailed) },
+                )
+            }
+        }
+    }
+
+    /**
+     * Exports the document as `<title>.docx` and queues it for sharing.
+     * Pages whose text isn't recognized yet are recognized first, so the
+     * document isn't missing pages that the background job hasn't reached.
+     */
+    fun exportDocx(title: String, includeImages: Boolean) {
+        if (_uiState.value.isExporting) return
+        _uiState.update { it.copy(isExporting = true) }
+        viewModelScope.launch {
+            // If recognition fails (e.g. ML Kit), export anyway: the pages
+            // come out empty and the user is told how many.
+            runSuspendCatching { textRecognition.runForDocument(documentId) }
+            val result = runSuspendCatching {
+                val output = withContext(ioDispatcher) {
+                    exportDir.mkdirs()
+                    deleteOldExports()
+                    File(exportDir, docxFileName(title))
+                }
+                docxExporter.exportDocx(documentId, output, includeImages)
+            }
+            _uiState.update { state ->
+                result.fold(
+                    onSuccess = { export ->
+                        state.copy(
+                            isExporting = false,
+                            pendingShare = ExportedFile(export.file, DOCX_MIME_TYPE),
+                            pagesMissingText = export.pagesPendingText,
+                            message = if (export.pagesPendingText > 0) {
+                                DocumentDetailMessage.DocxMissingText
+                            } else {
+                                state.message
+                            },
+                        )
+                    },
                     onFailure = { state.copy(isExporting = false, message = DocumentDetailMessage.ExportFailed) },
                 )
             }

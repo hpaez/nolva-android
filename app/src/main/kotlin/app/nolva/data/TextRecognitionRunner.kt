@@ -29,26 +29,47 @@ class TextRecognitionRunner(
             for (page in batch) {
                 if (shouldStop()) break
                 attempted += page.id
-                val image = page.displayFile
-                val lines = try {
-                    recognizer.recognize(image)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: DocumentException.Unsupported) {
-                    // Unreadable image: store "no text" so it isn't retried
-                    // until the page gets a new image.
-                    emptyList()
-                }
-                try {
-                    store.savePageText(page.id, image, lines)
-                    recognized++
-                } catch (e: DocumentException.Conflict) {
-                    // Re-cropped meanwhile: it's pending again, with its new image.
-                } catch (e: DocumentException.NotFound) {
-                    // Deleted meanwhile.
-                }
+                if (recognize(page)) recognized++
             }
         }
         return recognized
+    }
+
+    /**
+     * Recognizes the pending pages of one document right away, e.g. before
+     * exporting it, without waiting for the background job.
+     *
+     * @return how many pages got their text.
+     */
+    suspend fun runForDocument(documentId: String): Int {
+        val pending = store.pagesNeedingText(DOCUMENT_SCAN_LIMIT).filter { it.documentId == documentId }
+        return pending.count { recognize(it) }
+    }
+
+    /** @return whether the page's text was stored. */
+    private suspend fun recognize(page: Page): Boolean {
+        val image = page.displayFile
+        val lines = try {
+            recognizer.recognize(image)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: DocumentException.Unsupported) {
+            // Unreadable image: store "no text" so it isn't retried
+            // until the page gets a new image.
+            emptyList()
+        }
+        return try {
+            store.savePageText(page.id, image, lines)
+            true
+        } catch (e: DocumentException.Conflict) {
+            false // Re-cropped meanwhile: it's pending again, with its new image.
+        } catch (e: DocumentException.NotFound) {
+            false // Deleted meanwhile.
+        }
+    }
+
+    private companion object {
+        /** Pending pages looked at to find one document's; far above real backlogs. */
+        const val DOCUMENT_SCAN_LIMIT = 10_000
     }
 }

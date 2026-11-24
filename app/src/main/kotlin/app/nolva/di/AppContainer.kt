@@ -8,6 +8,7 @@ import app.nolva.data.CoreDocumentRepository
 import app.nolva.data.CoreSheetDetector
 import app.nolva.data.DocumentEditor
 import app.nolva.data.DocumentRepository
+import app.nolva.data.DocxExporter
 import app.nolva.data.PageCropper
 import app.nolva.data.PageImporter
 import app.nolva.data.PdfExporter
@@ -45,6 +46,8 @@ class AppContainer(context: Context) {
     val pageCropper: PageCropper get() = coreRepository
 
     val pdfExporter: PdfExporter get() = coreRepository
+
+    val docxExporter: DocxExporter get() = coreRepository
 
     /** Shareable exports; exposed to other apps through the FileProvider. */
     val exportDir: File get() = File(appContext.cacheDir, "exports")

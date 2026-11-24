@@ -39,7 +39,16 @@
     <string name="open_settings">Abrir ajustes</string>
 
     <!-- PDF export -->
-    <string name="export_pdf">PDF</string>
+    <string name="export">Exportar</string>
+    <string name="export_pdf_size">PDF · %1$s</string>
+    <string name="export_docx">Word</string>
+    <string name="export_docx_with_images">Word con imágenes de las páginas</string>
+    <string name="docx_missing_text_some">Algunas páginas todavía no tienen texto.</string>
+    <plurals name="docx_missing_text">
+        <item quantity="one">No se pudo leer %1$d página; quedó vacía en el Word.</item>
+        <item quantity="many">No se pudieron leer %1$d páginas; quedaron vacías en el Word.</item>
+        <item quantity="other">No se pudieron leer %1$d páginas; quedaron vacías en el Word.</item>
+    </plurals>
     <string name="paper_a4">A4</string>
     <string name="paper_letter">Carta</string>
     <string name="paper_legal">Oficio</string>
@@ -60,7 +69,7 @@
     <string name="error_invalid_title">Ese título no es válido.</string>
     <string name="error_load_pages">No se pudieron cargar las páginas.</string>
     <string name="error_import_page">No se pudo agregar la imagen.</string>
-    <string name="error_export_pdf">No se pudo crear el PDF.</string>
+    <string name="error_export">No se pudo exportar el documento.</string>
     <string name="error_capture">No se pudo tomar la foto. Inténtalo de nuevo.</string>
     <string name="error_unsupported_image">Ese formato de imagen no es compatible.</string>
 
