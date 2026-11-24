@@ -6,7 +6,13 @@ plugins {
 
 android {
     namespace = "app.nolva"
-    compileSdk = 37
+    // Compose 1.13+ needs the 37.1 SDK (a minor API level). targetSdk stays at
+    // 37: compiling against newer APIs doesn't change runtime behaviour.
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 1
+        }
+    }
 
     defaultConfig {
         applicationId = "app.nolva"
