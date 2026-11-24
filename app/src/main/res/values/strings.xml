@@ -63,6 +63,13 @@
 
     <!-- PDF export -->
     <string name="export">Export</string>
+    <string name="import_pdf">Import PDF</string>
+    <string name="importing_pdf">Opening the PDF…</string>
+    <string name="importing_pdf_pages">Importing page %1$d of %2$d…</string>
+    <string name="imported_pdf_title">Imported PDF</string>
+    <string name="error_pdf_unreadable">Couldn\'t open the PDF. It may be damaged or protected with a password.</string>
+    <string name="error_pdf_too_large">The PDF is empty or has more than 200 pages.</string>
+    <string name="error_import_pdf">Couldn\'t import the PDF.</string>
     <string name="export_pdf_size">PDF · %1$s</string>
     <string name="export_docx">Word</string>
     <string name="export_docx_with_images">Word with page images</string>

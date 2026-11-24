@@ -3,7 +3,9 @@ package app.nolva.di
 import android.content.Context
 import app.nolva.core.CoreConfig
 import app.nolva.core.NolvaCore
+import app.nolva.R
 import app.nolva.data.ContentPageImporter
+import app.nolva.data.ContentPdfImporter
 import app.nolva.data.CoreDocumentRepository
 import app.nolva.data.CoreSheetDetector
 import app.nolva.data.DocumentEditor
@@ -12,6 +14,7 @@ import app.nolva.data.DocxExporter
 import app.nolva.data.PageCropper
 import app.nolva.data.PageImporter
 import app.nolva.data.PdfExporter
+import app.nolva.data.PdfImporter
 import app.nolva.data.SheetDetector
 import app.nolva.data.MlKitTextRecognizer
 import app.nolva.data.PageTextStore
@@ -48,6 +51,17 @@ class AppContainer(context: Context) {
     val pdfExporter: PdfExporter get() = coreRepository
 
     val docxExporter: DocxExporter get() = coreRepository
+
+    val pdfImporter: PdfImporter by lazy {
+        ContentPdfImporter(
+            contentResolver = appContext.contentResolver,
+            cacheDir = appContext.cacheDir,
+            repository = coreRepository,
+            editor = coreRepository,
+            ioDispatcher = Dispatchers.IO,
+            fallbackTitle = appContext.getString(R.string.imported_pdf_title),
+        )
+    }
 
     /** Shareable exports; exposed to other apps through the FileProvider. */
     val exportDir: File get() = File(appContext.cacheDir, "exports")

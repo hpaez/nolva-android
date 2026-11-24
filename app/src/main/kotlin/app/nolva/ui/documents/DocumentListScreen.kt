@@ -1,6 +1,8 @@
 package app.nolva.ui.documents
 
 import android.content.res.Configuration
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,6 +30,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
@@ -61,6 +64,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.nolva.R
 import app.nolva.data.Document
 import app.nolva.data.MAX_TITLE_LENGTH
+import app.nolva.data.PdfImportProgress
 import app.nolva.data.TextMatch
 import app.nolva.ui.theme.NolvaTheme
 import app.nolva.ui.theme.WordmarkStyle
@@ -80,6 +84,14 @@ fun DocumentListRoute(
     // Reload whenever this screen is shown again (e.g. back from a document
     // whose page count changed).
     LaunchedEffect(viewModel) { viewModel.refresh() }
+    val pickPdf = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { viewModel.importPdf(it.toString()) }
+    }
+    LaunchedEffect(uiState.openDocument) {
+        val document = uiState.openDocument ?: return@LaunchedEffect
+        viewModel.documentOpened()
+        onOpenDocument(document)
+    }
     DocumentListScreen(
         uiState = uiState,
         onCreateDocument = viewModel::createDocument,
@@ -88,6 +100,7 @@ fun DocumentListRoute(
         onRenameDocument = viewModel::renameDocument,
         onDeleteDocument = viewModel::deleteDocument,
         onSearch = viewModel::search,
+        onImportPdf = { pickPdf.launch(arrayOf("application/pdf")) },
         modifier = modifier,
     )
 }
@@ -103,6 +116,7 @@ fun DocumentListScreen(
     onRenameDocument: (documentId: String, title: String) -> Unit = { _, _ -> },
     onDeleteDocument: (documentId: String) -> Unit = {},
     onSearch: (query: String) -> Unit = {},
+    onImportPdf: () -> Unit = {},
 ) {
     var showCreateDialog by rememberSaveable { mutableStateOf(false) }
     // Ids rather than documents so the dialogs survive configuration changes.
@@ -121,15 +135,25 @@ fun DocumentListScreen(
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = stringResource(R.string.wordmark),
-                        style = WordmarkStyle.copy(fontSize = MaterialTheme.typography.headlineSmall.fontSize),
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                },
-            )
+            Column {
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = stringResource(R.string.wordmark),
+                            style = WordmarkStyle.copy(fontSize = MaterialTheme.typography.headlineSmall.fontSize),
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    },
+                    actions = {
+                        TextButton(onClick = onImportPdf, enabled = uiState.pdfImport == null) {
+                            Text(stringResource(R.string.import_pdf))
+                        }
+                    },
+                )
+                uiState.pdfImport?.let { progress ->
+                    PdfImportBar(progress)
+                }
+            }
         },
         floatingActionButton = {
             ExtendedFloatingActionButton(
@@ -302,6 +326,30 @@ private fun Cover(document: Document) {
     }
 }
 
+/** Import progress under the top bar: indeterminate until the page count is known. */
+@Composable
+private fun PdfImportBar(progress: PdfImportProgress) {
+    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+        Text(
+            text = if (progress.pageCount == 0) {
+                stringResource(R.string.importing_pdf)
+            } else {
+                stringResource(R.string.importing_pdf_pages, progress.pagesDone, progress.pageCount)
+            },
+            style = MaterialTheme.typography.labelMedium,
+            color = NolvaTheme.colors.inkMuted,
+        )
+        if (progress.pageCount == 0) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        } else {
+            LinearProgressIndicator(
+                progress = { progress.pagesDone.toFloat() / progress.pageCount },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
 @Composable
 private fun SearchField(query: String, onQueryChange: (String) -> Unit, modifier: Modifier = Modifier) {
     val keyboard = LocalSoftwareKeyboardController.current
@@ -467,6 +515,9 @@ private fun DocumentListMessage.textRes(): Int = when (this) {
     DocumentListMessage.InvalidTitle -> R.string.error_invalid_title
     DocumentListMessage.RenameFailed -> R.string.error_rename_document
     DocumentListMessage.DeleteFailed -> R.string.error_delete_document
+    DocumentListMessage.PdfUnreadable -> R.string.error_pdf_unreadable
+    DocumentListMessage.PdfTooLarge -> R.string.error_pdf_too_large
+    DocumentListMessage.PdfImportFailed -> R.string.error_import_pdf
 }
 
 private val previewDocuments = listOf(
