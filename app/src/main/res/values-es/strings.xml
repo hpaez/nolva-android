@@ -41,6 +41,32 @@
     <!-- PDF export -->
     <string name="export">Exportar</string>
     <string name="import_pdf">Importar PDF</string>
+    <string name="duplicate">Duplicar</string>
+    <string name="copy_title">%1$s (copia)</string>
+    <string name="moved_to_trash">«%1$s» se movió a la papelera</string>
+    <string name="undo">Deshacer</string>
+    <string name="trash">Papelera</string>
+    <string name="trash_empty">La papelera está vacía. Los documentos eliminados se guardan aquí durante 30 días.</string>
+    <string name="trash_explanation">Los documentos de la papelera se eliminan definitivamente a los 30 días.</string>
+    <plurals name="trash_days_left">
+        <item quantity="one">Se elimina en %1$d día</item>
+        <item quantity="many">Se elimina en %1$d días</item>
+        <item quantity="other">Se elimina en %1$d días</item>
+    </plurals>
+    <string name="restore">Restaurar</string>
+    <string name="delete_forever">Eliminar definitivamente</string>
+    <string name="document_restored">«%1$s» se restauró</string>
+    <string name="empty_trash">Vaciar papelera</string>
+    <string name="empty_trash_title">¿Vaciar la papelera?</string>
+    <plurals name="empty_trash_body">
+        <item quantity="one">Se eliminará definitivamente %1$d documento. No se puede deshacer.</item>
+        <item quantity="many">Se eliminarán definitivamente %1$d documentos. No se puede deshacer.</item>
+        <item quantity="other">Se eliminarán definitivamente %1$d documentos. No se puede deshacer.</item>
+    </plurals>
+    <string name="error_load_trash">No se pudo cargar la papelera.</string>
+    <string name="error_restore_document">No se pudo restaurar el documento.</string>
+    <string name="error_duplicate_document">No se pudo duplicar el documento.</string>
+    <string name="error_empty_trash">No se pudo vaciar la papelera.</string>
     <string name="importing_pdf">Abriendo el PDF…</string>
     <string name="importing_pdf_pages">Importando página %1$d de %2$d…</string>
     <string name="imported_pdf_title">PDF importado</string>
@@ -87,7 +113,7 @@
     <string name="delete">Eliminar</string>
     <string name="save">Guardar</string>
     <string name="rename_document">Cambiar nombre del documento</string>
-    <string name="delete_document_title">¿Eliminar documento?</string>
+    <string name="delete_document_title">¿Eliminar definitivamente?</string>
     <string name="delete_document_body">«%1$s» y todas sus páginas se eliminarán de forma permanente. No se puede deshacer.</string>
     <string name="delete_page_title">¿Eliminar la página %1$d?</string>
     <string name="delete_page_body">La página se eliminará de forma permanente. No se puede deshacer.</string>

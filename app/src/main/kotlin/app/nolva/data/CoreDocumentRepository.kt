@@ -39,6 +39,7 @@ class CoreDocumentRepository(
     PageCropper,
     PdfExporter,
     DocxExporter,
+    DocumentTrash,
     OrphanFileCleaner,
     PageTextStore {
 
@@ -67,6 +68,26 @@ class CoreDocumentRepository(
     override suspend fun deleteDocument(documentId: String) = call {
         core.deleteDocument(documentId)
     }
+
+    override suspend fun duplicateDocument(documentId: String, title: String): Document = call {
+        core.duplicateDocument(documentId, title).toDocument()
+    }
+
+    override suspend fun moveToTrash(documentId: String) = call {
+        core.moveDocumentToTrash(documentId)
+    }
+
+    override suspend fun restore(documentId: String): Document = call {
+        core.restoreDocument(documentId).toDocument()
+    }
+
+    override suspend fun listTrash(): List<Document> = call {
+        core.listTrashedDocuments().map { it.toDocument() }
+    }
+
+    override suspend fun emptyTrash(): Int = call { core.emptyTrash().toInt() }
+
+    override suspend fun purgeExpired(): Int = call { core.purgeExpiredTrash().toInt() }
 
     override suspend fun deletePage(pageId: String) = call {
         core.deletePage(pageId)
@@ -140,6 +161,7 @@ private fun DocumentInfo.toDocument() = Document(
     updatedAt = Instant.ofEpochMilli(updatedAtMs),
     pageCount = pageCount.toInt(),
     coverFile = coverPath?.let(::File),
+    trashedAt = trashedAtMs?.let(Instant::ofEpochMilli),
 )
 
 private fun PageInfo.toPage() = Page(

@@ -48,6 +48,7 @@ class CoreDocumentRepositoryTest {
                 updatedAtMs = 2_000,
                 pageCount = 0u,
                 coverPath = null,
+                trashedAtMs = null,
             ).also { documents += it }
         }
 
@@ -83,6 +84,22 @@ class CoreDocumentRepositoryTest {
             return DocxExportInfo(pageCount = 3u, sizeBytes = 2048u, pagesPendingText = 1u)
         }
 
+        override fun moveDocumentToTrash(documentId: String) {
+            calls += "trash $documentId"
+        }
+
+        override fun restoreDocument(documentId: String): DocumentInfo = documents.first()
+
+        override fun listTrashedDocuments(): List<DocumentInfo> =
+            documents.map { it.copy(trashedAtMs = 7_000) }
+
+        override fun emptyTrash(): UInt = 2u
+
+        override fun purgeExpiredTrash(): UInt = 1u
+
+        override fun duplicateDocument(documentId: String, title: String): DocumentInfo =
+            createDocument(title)
+
         override fun removeOrphanFiles(): CleanupInfo = CleanupInfo(filesRemoved = 3u, bytesFreed = 4_096u)
 
         var exportedWith: PdfOptions? = null
@@ -111,6 +128,7 @@ class CoreDocumentRepositoryTest {
                 updatedAtMs = 9_000,
                 pageCount = 2u,
                 coverPath = "/data/nolva/$documentId/cover.jpg",
+                trashedAtMs = null,
             )
         }
 
@@ -201,6 +219,22 @@ class CoreDocumentRepositoryTest {
 
         assertEquals(DocxExport(File("/tmp/out.docx"), 3, 2048, 1), export)
         assertEquals(DocxOptions(includeImages = true), core.docxOptions)
+    }
+
+    @Test
+    fun `maps the trash`() = runTest(dispatcher) {
+        val core = FakeCore()
+        val repository = CoreDocumentRepository(dispatcher) { core }
+        repository.createDocument("Boleta")
+
+        repository.moveToTrash("doc-0")
+
+        assertTrue("trash doc-0" in core.calls)
+        assertEquals(Instant.ofEpochMilli(7_000), repository.listTrash().single().trashedAt)
+        assertEquals(null, repository.restore("doc-0").trashedAt)
+        assertEquals(2, repository.emptyTrash())
+        assertEquals(1, repository.purgeExpired())
+        assertEquals("Boleta (copia)", repository.duplicateDocument("doc-0", "Boleta (copia)").title)
     }
 
     @Test

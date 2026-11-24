@@ -6,6 +6,7 @@ import app.nolva.data.Document
 import app.nolva.data.DocumentEditor
 import app.nolva.data.DocumentException
 import app.nolva.data.DocumentRepository
+import app.nolva.data.DocumentTrash
 import app.nolva.data.PageTextStore
 import app.nolva.data.PdfImportProgress
 import app.nolva.data.PdfImporter
@@ -36,6 +37,11 @@ data class DocumentListUiState(
     val pdfImport: PdfImportProgress? = null,
     /** A document to open right away (an imported PDF); cleared with [DocumentListViewModel.documentOpened]. */
     val openDocument: Document? = null,
+    /**
+     * The document just moved to the trash, while its "Undo" notice shows;
+     * cleared with [DocumentListViewModel.undoTrash] or [DocumentListViewModel.trashNoticeShown].
+     */
+    val trashedDocument: Document? = null,
     /** One-shot message to show to the user; cleared with [DocumentListViewModel.messageShown]. */
     val message: DocumentListMessage? = null,
 ) {
@@ -68,6 +74,8 @@ enum class DocumentListMessage {
     PdfUnreadable,
     PdfTooLarge,
     PdfImportFailed,
+    RestoreFailed,
+    DuplicateFailed,
 }
 
 class DocumentListViewModel(
@@ -75,6 +83,7 @@ class DocumentListViewModel(
     private val editor: DocumentEditor,
     private val textStore: PageTextStore,
     private val pdfImporter: PdfImporter,
+    private val trash: DocumentTrash,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DocumentListUiState())
@@ -142,17 +151,58 @@ class DocumentListViewModel(
         }
     }
 
-    /** Permanently deletes a document and its pages. */
+    /** Moves a document to the trash; [undoTrash] brings it back. */
     fun deleteDocument(documentId: String) {
+        val document = _uiState.value.documents.find { it.id == documentId } ?: return
         viewModelScope.launch {
-            val result = runSuspendCatching { editor.deleteDocument(documentId) }
+            val result = runSuspendCatching { trash.moveToTrash(documentId) }
             _uiState.update { state ->
                 // Already gone (e.g. deleted twice) counts as done.
                 if (result.isSuccess || result.exceptionOrNull() is DocumentException.NotFound) {
-                    state.copy(documents = state.documents.filterNot { it.id == documentId })
+                    state.copy(
+                        documents = state.documents.filterNot { it.id == documentId },
+                        trashedDocument = document.takeIf { result.isSuccess },
+                    )
                 } else {
                     state.copy(message = DocumentListMessage.DeleteFailed)
                 }
+            }
+        }
+    }
+
+    /** Restores the document from the last "moved to trash" notice. */
+    fun undoTrash() {
+        val document = _uiState.value.trashedDocument ?: return
+        _uiState.update { it.copy(trashedDocument = null) }
+        viewModelScope.launch {
+            val result = runSuspendCatching { trash.restore(document.id) }
+            _uiState.update { state ->
+                result.fold(
+                    onSuccess = { restored ->
+                        // Back in its place: the list is ordered by last update.
+                        val documents = (state.documents.filterNot { it.id == restored.id } + restored)
+                            .sortedByDescending { it.updatedAt }
+                        state.copy(documents = documents)
+                    },
+                    onFailure = { state.copy(message = DocumentListMessage.RestoreFailed) },
+                )
+            }
+        }
+    }
+
+    fun trashNoticeShown() {
+        _uiState.update { it.copy(trashedDocument = null) }
+    }
+
+    /** Copies a document as [title]; the copy goes to the top of the list. */
+    fun duplicateDocument(documentId: String, title: String) {
+        viewModelScope.launch {
+            val result = runSuspendCatching { editor.duplicateDocument(documentId, title) }
+            _uiState.update { state ->
+                result.fold(
+                    onSuccess = { copy -> state.copy(documents = listOf(copy) + state.documents) },
+                    onFailure = { state.copy(message = DocumentListMessage.DuplicateFailed) },
+                )
             }
         }
     }
