@@ -1,5 +1,8 @@
 version: 2
 
+# Monthly: each update PR runs the whole CI, and minutes cost money on a
+# private repo. Security updates still arrive as soon as they are published.
+
 registries:
   # nolva-core's .aar lives in a private GitHub Packages registry. The token
   # is a Dependabot secret (Settings → Secrets and variables → Dependabot):
@@ -14,7 +17,7 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
     groups:
       actions:
         patterns: ["*"]
@@ -25,7 +28,7 @@ updates:
     # for the private one.
     registries: "*"
     schedule:
-      interval: weekly
+      interval: monthly
     # app.nolva:nolva-core matches no group, so each core release gets its
     # own PR, easy to review on its own.
     groups:
