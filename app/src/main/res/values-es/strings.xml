@@ -54,6 +54,33 @@
         <item quantity="other">%1$d documentos</item>
     </plurals>
     <string name="move_to_folder">Mover a carpeta</string>
+    <plurals name="moved_to_trash_many">
+        <item quantity="one">Se movió %1$d documento a la papelera</item>
+        <item quantity="many">Se movieron %1$d documentos a la papelera</item>
+        <item quantity="other">Se movieron %1$d documentos a la papelera</item>
+    </plurals>
+    <string name="sort_by">Ordenar por</string>
+    <string name="sort_updated">Última modificación</string>
+    <string name="sort_created">Fecha de creación</string>
+    <string name="sort_name">Nombre</string>
+    <string name="sort_size">Tamaño</string>
+    <string name="sort_pages">Cantidad de páginas</string>
+    <string name="view_as_grid">Ver como cuadrícula</string>
+    <string name="view_as_list">Ver como lista</string>
+    <string name="select">Seleccionar</string>
+    <string name="select_all">Todos</string>
+    <string name="clear_selection">Cancelar selección</string>
+    <string name="move">Mover</string>
+    <plurals name="selected_count">
+        <item quantity="one">%1$d seleccionado</item>
+        <item quantity="many">%1$d seleccionados</item>
+        <item quantity="other">%1$d seleccionados</item>
+    </plurals>
+    <plurals name="move_selected">
+        <item quantity="one">Mover %1$d documento</item>
+        <item quantity="many">Mover %1$d documentos</item>
+        <item quantity="other">Mover %1$d documentos</item>
+    </plurals>
     <string name="top_level">Inicio (sin carpeta)</string>
     <string name="error_folder">No se pudo guardar la carpeta.</string>
     <string name="error_move_document">No se pudo mover el documento.</string>

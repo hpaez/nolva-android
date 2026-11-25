@@ -6,9 +6,13 @@ import app.nolva.data.Document
 import app.nolva.data.DocumentEditor
 import app.nolva.data.DocumentException
 import app.nolva.data.DocumentRepository
+import app.nolva.data.DocumentSort
 import app.nolva.data.DocumentTrash
 import app.nolva.data.Folder
 import app.nolva.data.FolderStore
+import app.nolva.data.ListLayout
+import app.nolva.data.ListPreferences
+import app.nolva.data.ListSettings
 import app.nolva.data.PageTextStore
 import app.nolva.data.PdfImportProgress
 import app.nolva.data.PdfImporter
@@ -45,10 +49,14 @@ data class DocumentListUiState(
     /** A document to open right away (an imported PDF); cleared with [DocumentListViewModel.documentOpened]. */
     val openDocument: Document? = null,
     /**
-     * The document just moved to the trash, while its "Undo" notice shows;
+     * Documents just moved to the trash, while their "Undo" notice shows;
      * cleared with [DocumentListViewModel.undoTrash] or [DocumentListViewModel.trashNoticeShown].
      */
-    val trashedDocument: Document? = null,
+    val trashedDocuments: List<Document> = emptyList(),
+    /** Order and layout the user chose. */
+    val settings: ListSettings = ListSettings(),
+    /** Documents selected for a bulk action; selection mode is on while not empty. */
+    val selectedIds: Set<String> = emptySet(),
     /** One-shot message to show to the user; cleared with [DocumentListViewModel.messageShown]. */
     val message: DocumentListMessage? = null,
 ) {
@@ -64,12 +72,15 @@ data class DocumentListUiState(
         } else {
             documents.filter { it.folderId == folderId }
         }
-        if (needle.isEmpty()) {
+        val matching = if (needle.isEmpty()) {
             scope
         } else {
             scope.filter { needle in it.title.searchKey() || it.id in contentMatches }
         }
+        matching.sortedFor(settings.sort)
     }
+
+    val isSelecting: Boolean get() = selectedIds.isNotEmpty()
 
     /** Folders listed above the documents: only at the top level, filtered by name while searching. */
     val visibleFolders: List<Folder> by lazy {
@@ -84,6 +95,18 @@ data class DocumentListUiState(
     /** Nothing at all to show here, search aside: no documents, and at the top level no folders. */
     val isEmpty: Boolean
         get() = documents.none { it.folderId == folderId } && (folderId != null || folders.isEmpty())
+}
+
+/** [this] in [sort]'s order; ties keep the most recently edited first. */
+internal fun List<Document>.sortedFor(sort: DocumentSort): List<Document> {
+    val recentFirst = sortedByDescending { it.updatedAt }
+    return when (sort) {
+        DocumentSort.Updated -> recentFirst
+        DocumentSort.Created -> recentFirst.sortedByDescending { it.createdAt }
+        DocumentSort.Name -> recentFirst.sortedBy { it.title.searchKey() }
+        DocumentSort.Size -> recentFirst.sortedByDescending { it.sizeBytes }
+        DocumentSort.Pages -> recentFirst.sortedByDescending { it.pageCount }
+    }
 }
 
 private val diacritics = Regex("\\p{Mn}+")
@@ -116,6 +139,7 @@ class DocumentListViewModel(
     private val pdfImporter: PdfImporter,
     private val trash: DocumentTrash,
     private val folderStore: FolderStore,
+    private val preferences: ListPreferences,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DocumentListUiState(folderId = folderId))
@@ -127,11 +151,19 @@ class DocumentListViewModel(
         // The spinner only shows on the first load (initial state); later
         // refreshes keep the current list visible while reloading.
         viewModelScope.launch {
+            val settings = runSuspendCatching { preferences.load() }.getOrNull()
             val result = runSuspendCatching { repository.listDocuments() to folderStore.listFolders() }
             _uiState.update { state ->
                 result.fold(
                     onSuccess = { (documents, folders) ->
-                        state.copy(isLoading = false, documents = documents, folders = folders)
+                        state.copy(
+                            isLoading = false,
+                            documents = documents,
+                            folders = folders,
+                            settings = settings ?: state.settings,
+                            // Drop selections of documents that are gone.
+                            selectedIds = state.selectedIds.filterTo(mutableSetOf()) { id -> documents.any { it.id == id } },
+                        )
                     },
                     onFailure = { state.copy(isLoading = false, message = DocumentListMessage.LoadFailed) },
                 )
@@ -188,14 +220,14 @@ class DocumentListViewModel(
     }
 
     /**
-     * Creates a folder; with [thenMove], also moves that document into it
+     * Creates a folder; with [thenMove], also moves those documents into it
      * (the "New folder…" option of the move dialog).
      */
-    fun createFolder(name: String, thenMove: String? = null) {
+    fun createFolder(name: String, thenMove: List<String> = emptyList()) {
         viewModelScope.launch {
             val result = runSuspendCatching {
                 val folder = folderStore.createFolder(name)
-                if (thenMove != null) folderStore.moveDocuments(listOf(thenMove), folder.id)
+                if (thenMove.isNotEmpty()) folderStore.moveDocuments(thenMove, folder.id)
                 folder
             }
             result.fold(
@@ -204,11 +236,12 @@ class DocumentListViewModel(
                         state.copy(
                             folders = (state.folders + folder).sortedBy { it.name.searchKey() },
                             documents = state.documents.map {
-                                if (it.id == thenMove) it.copy(folderId = folder.id) else it
+                                if (it.id in thenMove) it.copy(folderId = folder.id) else it
                             },
+                            selectedIds = if (thenMove.isEmpty()) state.selectedIds else emptySet(),
                         )
                     }
-                    if (thenMove != null) reloadFolders()
+                    if (thenMove.isNotEmpty()) reloadFolders()
                 },
                 onFailure = { error -> _uiState.update { it.copy(message = folderError(error)) } },
             )
@@ -252,15 +285,22 @@ class DocumentListViewModel(
     }
 
     /** Moves a document into [toFolderId] (`null`: the top level). */
-    fun moveDocument(documentId: String, toFolderId: String?) {
+    fun moveDocument(documentId: String, toFolderId: String?) = moveDocuments(listOf(documentId), toFolderId)
+
+    /** Moves the selected documents into [toFolderId] and ends the selection. */
+    fun moveSelected(toFolderId: String?) = moveDocuments(_uiState.value.selectedIds.toList(), toFolderId)
+
+    private fun moveDocuments(documentIds: List<String>, toFolderId: String?) {
+        if (documentIds.isEmpty()) return
         viewModelScope.launch {
-            val result = runSuspendCatching { folderStore.moveDocuments(listOf(documentId), toFolderId) }
+            val result = runSuspendCatching { folderStore.moveDocuments(documentIds, toFolderId) }
             if (result.isSuccess) {
                 _uiState.update { state ->
                     state.copy(
                         documents = state.documents.map {
-                            if (it.id == documentId) it.copy(folderId = toFolderId) else it
+                            if (it.id in documentIds) it.copy(folderId = toFolderId) else it
                         },
+                        selectedIds = state.selectedIds - documentIds.toSet(),
                     )
                 }
                 reloadFolders()
@@ -281,46 +321,95 @@ class DocumentListViewModel(
         if (error is DocumentException.InvalidInput) DocumentListMessage.InvalidTitle else DocumentListMessage.FolderFailed
 
     /** Moves a document to the trash; [undoTrash] brings it back. */
-    fun deleteDocument(documentId: String) {
-        val document = _uiState.value.documents.find { it.id == documentId } ?: return
+    fun deleteDocument(documentId: String) = trashDocuments(listOf(documentId))
+
+    /** Moves the selected documents to the trash and ends the selection. */
+    fun deleteSelected() = trashDocuments(_uiState.value.selectedIds.toList())
+
+    private fun trashDocuments(documentIds: List<String>) {
+        val documents = _uiState.value.documents.filter { it.id in documentIds }
+        if (documents.isEmpty()) return
         viewModelScope.launch {
-            val result = runSuspendCatching { trash.moveToTrash(documentId) }
-            _uiState.update { state ->
-                // Already gone (e.g. deleted twice) counts as done.
-                if (result.isSuccess || result.exceptionOrNull() is DocumentException.NotFound) {
-                    state.copy(
-                        documents = state.documents.filterNot { it.id == documentId },
-                        trashedDocument = document.takeIf { result.isSuccess },
-                    )
-                } else {
-                    state.copy(message = DocumentListMessage.DeleteFailed)
+            val trashed = mutableListOf<Document>()
+            val gone = mutableSetOf<String>()
+            var failed = false
+            for (document in documents) {
+                val result = runSuspendCatching { trash.moveToTrash(document.id) }
+                when {
+                    result.isSuccess -> {
+                        trashed += document
+                        gone += document.id
+                    }
+                    // Already gone (e.g. deleted twice): nothing to undo, but it leaves the list.
+                    result.exceptionOrNull() is DocumentException.NotFound -> gone += document.id
+                    else -> failed = true
                 }
+            }
+            _uiState.update { state ->
+                state.copy(
+                    documents = state.documents.filterNot { it.id in gone },
+                    selectedIds = state.selectedIds - gone,
+                    trashedDocuments = trashed,
+                    message = if (failed) DocumentListMessage.DeleteFailed else state.message,
+                )
             }
         }
     }
 
-    /** Restores the document from the last "moved to trash" notice. */
+    /** Restores the documents from the last "moved to trash" notice. */
     fun undoTrash() {
-        val document = _uiState.value.trashedDocument ?: return
-        _uiState.update { it.copy(trashedDocument = null) }
+        val documents = _uiState.value.trashedDocuments
+        if (documents.isEmpty()) return
+        _uiState.update { it.copy(trashedDocuments = emptyList()) }
         viewModelScope.launch {
-            val result = runSuspendCatching { trash.restore(document.id) }
+            val restored = mutableListOf<Document>()
+            var failed = false
+            for (document in documents) {
+                runSuspendCatching { trash.restore(document.id) }.fold(
+                    onSuccess = { restored += it },
+                    onFailure = { failed = true },
+                )
+            }
             _uiState.update { state ->
-                result.fold(
-                    onSuccess = { restored ->
-                        // Back in its place: the list is ordered by last update.
-                        val documents = (state.documents.filterNot { it.id == restored.id } + restored)
-                            .sortedByDescending { it.updatedAt }
-                        state.copy(documents = documents)
-                    },
-                    onFailure = { state.copy(message = DocumentListMessage.RestoreFailed) },
+                val ids = restored.map { it.id }.toSet()
+                state.copy(
+                    documents = state.documents.filterNot { it.id in ids } + restored,
+                    message = if (failed) DocumentListMessage.RestoreFailed else state.message,
                 )
             }
         }
     }
 
     fun trashNoticeShown() {
-        _uiState.update { it.copy(trashedDocument = null) }
+        _uiState.update { it.copy(trashedDocuments = emptyList()) }
+    }
+
+    /** Starts or extends a selection with [documentId], or removes it if already selected. */
+    fun toggleSelection(documentId: String) {
+        _uiState.update { state ->
+            val selected = state.selectedIds
+            state.copy(selectedIds = if (documentId in selected) selected - documentId else selected + documentId)
+        }
+    }
+
+    /** Selects every document on screen (respecting the folder and search). */
+    fun selectAll() {
+        _uiState.update { state -> state.copy(selectedIds = state.visibleDocuments.map { it.id }.toSet()) }
+    }
+
+    fun clearSelection() {
+        _uiState.update { it.copy(selectedIds = emptySet()) }
+    }
+
+    fun setSort(sort: DocumentSort) = updateSettings { it.copy(sort = sort) }
+
+    fun setLayout(layout: ListLayout) = updateSettings { it.copy(layout = layout) }
+
+    private fun updateSettings(change: (ListSettings) -> ListSettings) {
+        val settings = change(_uiState.value.settings)
+        _uiState.update { it.copy(settings = settings) }
+        // Best effort: if saving fails, the choice still applies for now.
+        viewModelScope.launch { runSuspendCatching { preferences.save(settings) } }
     }
 
     /** Copies a document as [title]; the copy goes to the top of the list. */
