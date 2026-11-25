@@ -256,4 +256,5 @@
     <string name="error_save_annotations">Couldn\'t save the annotations.</string>
     <string name="error_signature">Couldn\'t save the signature.</string>
     <string name="error_too_many_signatures">You have 10 saved signatures. Forget one to save another.</string>
+    <string name="open_document">Open</string>
 </resources>

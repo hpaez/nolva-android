@@ -778,7 +778,7 @@ private fun DocumentRow(
         border = selectionBorder(selected),
         modifier = Modifier
             .fillMaxWidth()
-            .selectableDocument(document, selected, selecting, actions, shape),
+            .selectableDocument(document, selected, selecting, actions, shape, documentClickLabels()),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Cover(
@@ -810,7 +810,7 @@ private fun DocumentTile(
         border = selectionBorder(selected),
         modifier = Modifier
             .fillMaxWidth()
-            .selectableDocument(document, selected, selecting, actions, shape),
+            .selectableDocument(document, selected, selecting, actions, shape, documentClickLabels()),
     ) {
         Cover(
             document,
@@ -827,9 +827,16 @@ private fun DocumentTile(
     }
 }
 
+/** What tapping and long-pressing a document do, for TalkBack. */
+private data class DocumentClickLabels(val open: String, val select: String)
+
+@Composable
+private fun documentClickLabels() =
+    DocumentClickLabels(open = stringResource(R.string.open_document), select = stringResource(R.string.select))
+
 /**
  * Tap opens the document, or toggles it while selecting; long press starts
- * (or extends) a selection.
+ * (or extends) a selection. TalkBack announces both actions by name.
  */
 private fun Modifier.selectableDocument(
     document: Document,
@@ -837,9 +844,12 @@ private fun Modifier.selectableDocument(
     selecting: Boolean,
     actions: DocumentActions,
     shape: Shape,
+    labels: DocumentClickLabels,
 ): Modifier = semantics { this.selected = selected }
     .clip(shape)
     .combinedClickable(
+        onClickLabel = if (selecting) labels.select else labels.open,
+        onLongClickLabel = labels.select,
         onClick = { if (selecting) actions.onToggleSelection(document) else actions.onOpen(document) },
         onLongClick = { actions.onToggleSelection(document) },
     )

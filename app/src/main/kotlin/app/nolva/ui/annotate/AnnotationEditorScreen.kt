@@ -6,7 +6,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
@@ -62,9 +62,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -218,6 +220,8 @@ private fun EditorTopBar(
             stringResource(R.string.annotate_title),
             color = Color.White,
             style = MaterialTheme.typography.titleMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
         WhiteIcon(R.drawable.ic_undo, R.string.undo, canUndo, onUndo)
@@ -518,7 +522,8 @@ private fun ColorDot(color: Int, selected: Boolean, label: String, onClick: () -
         modifier = Modifier
             .size(36.dp)
             .clip(CircleShape)
-            .clickable(onClick = onClick)
+            // A choice among colours: TalkBack says its name and whether it's selected.
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
             .semantics { contentDescription = label }
             .border(if (selected) 3.dp else 1.dp, if (selected) Color.White else Color.Gray, CircleShape)
             .padding(5.dp)
