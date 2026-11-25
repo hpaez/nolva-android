@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -107,6 +108,7 @@ fun DocumentDetailRoute(
         },
         onMessageShown = viewModel::messageShown,
         onExportPdf = { paperSize -> viewModel.exportPdf(title, paperSize) },
+        onPageNumbersChange = viewModel::setPageNumbers,
         onExportDocx = { includeImages -> viewModel.exportDocx(title, includeImages) },
         onDeletePage = viewModel::deletePage,
         onMovePage = viewModel::movePage,
@@ -126,6 +128,7 @@ fun DocumentDetailScreen(
     modifier: Modifier = Modifier,
     onOpenPage: (Int) -> Unit = {},
     onExportPdf: (PaperSize) -> Unit = {},
+    onPageNumbersChange: (Boolean) -> Unit = {},
     onExportDocx: (includeImages: Boolean) -> Unit = {},
     onDeletePage: (pageId: String) -> Unit = {},
     onMovePage: (pageId: String, toPosition: Int) -> Unit = { _, _ -> },
@@ -179,6 +182,12 @@ fun DocumentDetailScreen(
                                         },
                                     )
                                 }
+                                // A setting, not an export: toggling keeps the menu open.
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.pdf_page_numbers)) },
+                                    trailingIcon = { Checkbox(checked = uiState.pageNumbers, onCheckedChange = null) },
+                                    onClick = { onPageNumbersChange(!uiState.pageNumbers) },
+                                )
                                 HorizontalDivider()
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.export_docx)) },

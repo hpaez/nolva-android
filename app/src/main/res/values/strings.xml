@@ -134,6 +134,7 @@
     <string name="error_import_pdf">Couldn\'t import the PDF.</string>
     <string name="export_pdf_size">PDF · %1$s</string>
     <string name="export_docx">Word</string>
+    <string name="pdf_page_numbers">Number PDF pages</string>
     <string name="export_docx_with_images">Word with page images</string>
     <string name="docx_missing_text_some">Some pages have no text yet.</string>
     <plurals name="docx_missing_text">
