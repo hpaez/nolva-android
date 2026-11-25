@@ -65,6 +65,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -408,7 +410,9 @@ private fun ShutterButton(enabled: Boolean, onClick: () -> Unit) {
                 role = Role.Button,
                 onClickLabel = description,
                 onClick = onClick,
-            ),
+            )
+            // Without a name TalkBack only says "button".
+            .semantics { contentDescription = description },
     )
 }
 

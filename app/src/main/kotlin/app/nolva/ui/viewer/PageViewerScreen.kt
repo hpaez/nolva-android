@@ -27,6 +27,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.CircularProgressIndicator
@@ -263,17 +266,36 @@ private fun PagePager(
                 .padding(8.dp)
                 .align(Alignment.TopEnd),
         ) {
-            TextButton(onClick = { onShowText(pages[pagerState.currentPage].id) }) {
-                Text(stringResource(R.string.show_text), color = Color.White)
-            }
-            IconButton(onClick = { onShare(pages[pagerState.currentPage].id) }) {
-                Icon(Icons.Default.Share, contentDescription = stringResource(R.string.share_page), tint = Color.White)
-            }
+            // Two frequent actions and a menu: four buttons don't fit next to
+            // Close on a 360 dp phone, let alone with large text.
             TextButton(onClick = { onAnnotate(pages[pagerState.currentPage].id) }, enabled = !busy) {
-                Text(stringResource(R.string.annotate), color = Color.White)
+                Text(stringResource(R.string.annotate), color = Color.White, maxLines = 1)
             }
-            TextButton(onClick = { onAdjustCrop(pages[pagerState.currentPage].id) }) {
-                Text(stringResource(R.string.adjust_crop), color = Color.White)
+            TextButton(onClick = { onShowText(pages[pagerState.currentPage].id) }) {
+                Text(stringResource(R.string.show_text), color = Color.White, maxLines = 1)
+            }
+            var menuOpen by remember { mutableStateOf(false) }
+            Box {
+                IconButton(onClick = { menuOpen = true }) {
+                    Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.more_options), tint = Color.White)
+                }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.share_page)) },
+                        leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },
+                        onClick = {
+                            menuOpen = false
+                            onShare(pages[pagerState.currentPage].id)
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.adjust_crop)) },
+                        onClick = {
+                            menuOpen = false
+                            onAdjustCrop(pages[pagerState.currentPage].id)
+                        },
+                    )
+                }
             }
         }
 
@@ -329,9 +351,12 @@ private fun PagePager(
             text = stringResource(R.string.page_counter, pagerState.currentPage + 1, pages.size),
             color = Color.White,
             style = MaterialTheme.typography.labelLarge,
+            // Below the top bar, so it never sits under its buttons.
             modifier = Modifier
                 .statusBarsPadding()
-                .padding(top = 20.dp)
+                .padding(top = 64.dp)
+                .background(Color.Black.copy(alpha = 0.5f), MaterialTheme.shapes.small)
+                .padding(horizontal = 10.dp, vertical = 4.dp)
                 .align(Alignment.TopCenter),
         )
     }
