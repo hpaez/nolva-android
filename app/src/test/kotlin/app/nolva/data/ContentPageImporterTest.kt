@@ -2,6 +2,7 @@ package app.nolva.data
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ContentPageImporterTest {
@@ -38,5 +39,17 @@ class ContentPageImporterTest {
         assertNull(ContentPageImporter.extensionFor("image/gif"))
         assertNull(ContentPageImporter.extensionFor("application/pdf"))
         assertNull(ContentPageImporter.extensionFor(null))
+    }
+
+    @Test
+    fun `refuses images over the size limit`() {
+        val out = java.io.ByteArrayOutputStream()
+        ContentPageImporter.copyAtMost(java.io.ByteArrayInputStream(ByteArray(1000)), out, limit = 1000)
+        assertEquals(1000, out.size())
+
+        val tooBig = runCatching {
+            ContentPageImporter.copyAtMost(java.io.ByteArrayInputStream(ByteArray(1001)), java.io.ByteArrayOutputStream(), limit = 1000)
+        }
+        assertTrue(tooBig.exceptionOrNull() is DocumentException.InvalidInput)
     }
 }

@@ -133,6 +133,9 @@ class ContentPdfImporter(
         /** Sharp enough for OCR and printing; an A4 page is about 1650 × 2340 px. */
         const val RENDER_DPI = 200
 
+        private val CONTROL_CHARS = Regex("""\p{Cntrl}""")
+        private val DIRECTION_MARKS = Regex("""[\u200E\u200F\u202A-\u202E\u2066-\u2069]""")
+
         /** Cap for huge page sizes (posters, plans), to bound memory. */
         const val MAX_SIDE = 3500
 
@@ -153,7 +156,9 @@ class ContentPdfImporter(
 
         /** The file name without `.pdf`, trimmed to a valid title, or [fallback]. */
         internal fun documentTitle(fileName: String?, fallback: String): String {
-            val base = fileName.orEmpty().trim().let {
+            // The name comes from another app: drop control characters (the
+            // core rejects them) and direction overrides (they disguise names).
+            val base = fileName.orEmpty().replace(CONTROL_CHARS, " ").replace(DIRECTION_MARKS, "").trim().let {
                 if (it.endsWith(".pdf", ignoreCase = true)) it.dropLast(4) else it
             }
             return base.trim().take(MAX_TITLE_LENGTH).trim().ifEmpty { fallback }

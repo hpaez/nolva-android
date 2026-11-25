@@ -65,7 +65,12 @@ fun interface DocxExporter {
 /** MIME type of .docx files, for sharing. */
 const val DOCX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
-private val UNSAFE_FILE_CHARS = Regex("""[\\/:*?"<>|\p{Cntrl}]""")
+/**
+ * Characters file systems or share targets reject, control characters, and
+ * bidirectional overrides: "Factura\u202Efdp.exe" would display as
+ * "Facturaexe.pdf" and disguise what the file is.
+ */
+private val UNSAFE_FILE_CHARS = Regex("""[\\/:*?"<>|\p{Cntrl}\u200E\u200F\u202A-\u202E\u2066-\u2069]""")
 
 /**
  * [title] made safe as a file name: characters that file systems or share
