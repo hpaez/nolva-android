@@ -48,7 +48,7 @@ internal fun placeSignature(
 }
 
 /** Strokes drawn on the signature pad, fitted into their own box. */
-internal data class NormalizedSignature(val strokes: List<List<NormalizedPoint>>, val aspectRatio: Float)
+data class NormalizedSignature(val strokes: List<List<NormalizedPoint>>, val aspectRatio: Float)
 
 /**
  * Fits [strokes] (pad pixels) into a `0..1` box, keeping their shape, or
