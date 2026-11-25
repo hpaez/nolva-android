@@ -7,6 +7,8 @@ import app.nolva.data.DocumentEditor
 import app.nolva.data.DocumentException
 import app.nolva.data.DocumentRepository
 import app.nolva.data.DocumentTrash
+import app.nolva.data.Folder
+import app.nolva.data.FolderStore
 import app.nolva.data.PageTextStore
 import app.nolva.data.PdfImportProgress
 import app.nolva.data.PdfImporter
@@ -23,8 +25,13 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class DocumentListUiState(
+    /** Folder this screen shows; `null` for the top level. */
+    val folderId: String? = null,
     val isLoading: Boolean = true,
+    /** Every document, in every folder; the screen shows [visibleDocuments]. */
     val documents: List<Document> = emptyList(),
+    /** Every folder, by name; the top level shows [visibleFolders]. */
+    val folders: List<Folder> = emptyList(),
     /** Text typed in the search field; empty shows every document. */
     val query: String = "",
     /**
@@ -51,12 +58,32 @@ data class DocumentListUiState(
      */
     val visibleDocuments: List<Document> by lazy {
         val needle = query.searchKey()
-        if (needle.isEmpty()) {
+        // A search from the top level spans every folder; inside a folder it stays there.
+        val scope = if (folderId == null && needle.isNotEmpty()) {
             documents
         } else {
-            documents.filter { needle in it.title.searchKey() || it.id in contentMatches }
+            documents.filter { it.folderId == folderId }
+        }
+        if (needle.isEmpty()) {
+            scope
+        } else {
+            scope.filter { needle in it.title.searchKey() || it.id in contentMatches }
         }
     }
+
+    /** Folders listed above the documents: only at the top level, filtered by name while searching. */
+    val visibleFolders: List<Folder> by lazy {
+        val needle = query.searchKey()
+        when {
+            folderId != null -> emptyList()
+            needle.isEmpty() -> folders
+            else -> folders.filter { needle in it.name.searchKey() }
+        }
+    }
+
+    /** Nothing at all to show here, search aside: no documents, and at the top level no folders. */
+    val isEmpty: Boolean
+        get() = documents.none { it.folderId == folderId } && (folderId != null || folders.isEmpty())
 }
 
 private val diacritics = Regex("\\p{Mn}+")
@@ -76,17 +103,22 @@ enum class DocumentListMessage {
     PdfImportFailed,
     RestoreFailed,
     DuplicateFailed,
+    FolderFailed,
+    MoveFailed,
 }
 
 class DocumentListViewModel(
+    /** Folder to show; `null` for the top level. */
+    private val folderId: String?,
     private val repository: DocumentRepository,
     private val editor: DocumentEditor,
     private val textStore: PageTextStore,
     private val pdfImporter: PdfImporter,
     private val trash: DocumentTrash,
+    private val folderStore: FolderStore,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(DocumentListUiState())
+    private val _uiState = MutableStateFlow(DocumentListUiState(folderId = folderId))
     val uiState: StateFlow<DocumentListUiState> = _uiState.asStateFlow()
 
     private var contentSearch: Job? = null
@@ -95,10 +127,12 @@ class DocumentListViewModel(
         // The spinner only shows on the first load (initial state); later
         // refreshes keep the current list visible while reloading.
         viewModelScope.launch {
-            val result = runSuspendCatching { repository.listDocuments() }
+            val result = runSuspendCatching { repository.listDocuments() to folderStore.listFolders() }
             _uiState.update { state ->
                 result.fold(
-                    onSuccess = { state.copy(isLoading = false, documents = it) },
+                    onSuccess = { (documents, folders) ->
+                        state.copy(isLoading = false, documents = documents, folders = folders)
+                    },
                     onFailure = { state.copy(isLoading = false, message = DocumentListMessage.LoadFailed) },
                 )
             }
@@ -111,7 +145,9 @@ class DocumentListViewModel(
         if (_uiState.value.isCreating) return
         viewModelScope.launch {
             _uiState.update { it.copy(isCreating = true) }
-            val result = runSuspendCatching { repository.createDocument(title) }
+            val result = runSuspendCatching {
+                if (folderId == null) repository.createDocument(title) else folderStore.createDocumentIn(title, folderId)
+            }
             result.fold(
                 onSuccess = { created ->
                     // Newest first, matching the repository's ordering.
@@ -150,6 +186,99 @@ class DocumentListViewModel(
             )
         }
     }
+
+    /**
+     * Creates a folder; with [thenMove], also moves that document into it
+     * (the "New folder…" option of the move dialog).
+     */
+    fun createFolder(name: String, thenMove: String? = null) {
+        viewModelScope.launch {
+            val result = runSuspendCatching {
+                val folder = folderStore.createFolder(name)
+                if (thenMove != null) folderStore.moveDocuments(listOf(thenMove), folder.id)
+                folder
+            }
+            result.fold(
+                onSuccess = { folder ->
+                    _uiState.update { state ->
+                        state.copy(
+                            folders = (state.folders + folder).sortedBy { it.name.searchKey() },
+                            documents = state.documents.map {
+                                if (it.id == thenMove) it.copy(folderId = folder.id) else it
+                            },
+                        )
+                    }
+                    if (thenMove != null) reloadFolders()
+                },
+                onFailure = { error -> _uiState.update { it.copy(message = folderError(error)) } },
+            )
+        }
+    }
+
+    fun renameFolder(folderId: String, name: String) {
+        viewModelScope.launch {
+            val result = runSuspendCatching { folderStore.renameFolder(folderId, name) }
+            _uiState.update { state ->
+                result.fold(
+                    onSuccess = { renamed ->
+                        state.copy(
+                            folders = state.folders.map { if (it.id == folderId) renamed else it }
+                                .sortedBy { it.name.searchKey() },
+                        )
+                    },
+                    onFailure = { error -> state.copy(message = folderError(error)) },
+                )
+            }
+        }
+    }
+
+    /** Deletes a folder; its documents move to the top level. */
+    fun deleteFolder(folderId: String) {
+        viewModelScope.launch {
+            val result = runSuspendCatching { folderStore.deleteFolder(folderId) }
+            _uiState.update { state ->
+                if (result.isSuccess || result.exceptionOrNull() is DocumentException.NotFound) {
+                    state.copy(
+                        folders = state.folders.filterNot { it.id == folderId },
+                        documents = state.documents.map {
+                            if (it.folderId == folderId) it.copy(folderId = null) else it
+                        },
+                    )
+                } else {
+                    state.copy(message = DocumentListMessage.FolderFailed)
+                }
+            }
+        }
+    }
+
+    /** Moves a document into [toFolderId] (`null`: the top level). */
+    fun moveDocument(documentId: String, toFolderId: String?) {
+        viewModelScope.launch {
+            val result = runSuspendCatching { folderStore.moveDocuments(listOf(documentId), toFolderId) }
+            if (result.isSuccess) {
+                _uiState.update { state ->
+                    state.copy(
+                        documents = state.documents.map {
+                            if (it.id == documentId) it.copy(folderId = toFolderId) else it
+                        },
+                    )
+                }
+                reloadFolders()
+            } else {
+                _uiState.update { it.copy(message = DocumentListMessage.MoveFailed) }
+            }
+        }
+    }
+
+    /** Refreshes the folders' document counts after moves. */
+    private suspend fun reloadFolders() {
+        runSuspendCatching { folderStore.listFolders() }.getOrNull()?.let { folders ->
+            _uiState.update { it.copy(folders = folders) }
+        }
+    }
+
+    private fun folderError(error: Throwable) =
+        if (error is DocumentException.InvalidInput) DocumentListMessage.InvalidTitle else DocumentListMessage.FolderFailed
 
     /** Moves a document to the trash; [undoTrash] brings it back. */
     fun deleteDocument(documentId: String) {
@@ -213,7 +342,14 @@ class DocumentListViewModel(
         _uiState.update { it.copy(pdfImport = PdfImportProgress(0, 0)) }
         viewModelScope.launch {
             val result = runSuspendCatching {
-                pdfImporter.import(uri) { progress -> _uiState.update { it.copy(pdfImport = progress) } }
+                val document = pdfImporter.import(uri) { progress -> _uiState.update { it.copy(pdfImport = progress) } }
+                // Imported from inside a folder: it belongs there.
+                if (folderId != null) {
+                    folderStore.moveDocuments(listOf(document.id), folderId)
+                    document.copy(folderId = folderId)
+                } else {
+                    document
+                }
             }
             _uiState.update { state ->
                 result.fold(

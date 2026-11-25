@@ -9,21 +9,28 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -35,6 +42,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -58,6 +66,7 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -67,6 +76,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.nolva.R
 import app.nolva.data.Document
+import app.nolva.data.Folder
 import app.nolva.data.MAX_TITLE_LENGTH
 import app.nolva.data.PdfImportProgress
 import app.nolva.data.TextMatch
@@ -83,7 +93,12 @@ fun DocumentListRoute(
     viewModel: DocumentListViewModel,
     onOpenDocument: (Document) -> Unit,
     onOpenTrash: () -> Unit,
+    onOpenFolder: (Folder) -> Unit,
     modifier: Modifier = Modifier,
+    /** Name of the folder shown; `null` at the top level. */
+    folderName: String? = null,
+    /** Back navigation; `null` at the top level, which has none. */
+    onBack: (() -> Unit)? = null,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     // Reload whenever this screen is shown again (e.g. back from a document
@@ -110,6 +125,13 @@ fun DocumentListRoute(
         onTrashNoticeShown = viewModel::trashNoticeShown,
         onDuplicateDocument = viewModel::duplicateDocument,
         onOpenTrash = onOpenTrash,
+        folderName = folderName,
+        onBack = onBack,
+        onOpenFolder = onOpenFolder,
+        onCreateFolder = viewModel::createFolder,
+        onRenameFolder = viewModel::renameFolder,
+        onDeleteFolder = viewModel::deleteFolder,
+        onMoveDocument = viewModel::moveDocument,
         modifier = modifier,
     )
 }
@@ -130,10 +152,23 @@ fun DocumentListScreen(
     onTrashNoticeShown: () -> Unit = {},
     onDuplicateDocument: (documentId: String, title: String) -> Unit = { _, _ -> },
     onOpenTrash: () -> Unit = {},
+    folderName: String? = null,
+    onBack: (() -> Unit)? = null,
+    onOpenFolder: (Folder) -> Unit = {},
+    onCreateFolder: (name: String, thenMove: String?) -> Unit = { _, _ -> },
+    onRenameFolder: (folderId: String, name: String) -> Unit = { _, _ -> },
+    onDeleteFolder: (folderId: String) -> Unit = {},
+    onMoveDocument: (documentId: String, folderId: String?) -> Unit = { _, _ -> },
 ) {
     var showCreateDialog by rememberSaveable { mutableStateOf(false) }
     // Ids rather than documents so the dialogs survive configuration changes.
     var renamingId by rememberSaveable { mutableStateOf<String?>(null) }
+    var movingId by rememberSaveable { mutableStateOf<String?>(null) }
+    var showNewFolder by rememberSaveable { mutableStateOf(false) }
+    /** Document to move into the folder being created, if it was started from the move dialog. */
+    var newFolderFor by rememberSaveable { mutableStateOf<String?>(null) }
+    var renamingFolderId by rememberSaveable { mutableStateOf<String?>(null) }
+    var deletingFolderId by rememberSaveable { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Deleting is undoable, so it needs no confirmation: the notice offers "Undo".
@@ -166,19 +201,35 @@ fun DocumentListScreen(
             Column {
                 TopAppBar(
                     title = {
-                        Text(
-                            text = stringResource(R.string.wordmark),
-                            style = WordmarkStyle.copy(fontSize = MaterialTheme.typography.headlineSmall.fontSize),
-                            color = MaterialTheme.colorScheme.primary,
-                        )
+                        if (folderName == null) {
+                            Text(
+                                text = stringResource(R.string.wordmark),
+                                style = WordmarkStyle.copy(fontSize = MaterialTheme.typography.headlineSmall.fontSize),
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        } else {
+                            Text(folderName, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    },
+                    navigationIcon = {
+                        if (onBack != null) {
+                            IconButton(onClick = onBack) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
+                            }
+                        }
                     },
                     actions = {
                         TextButton(onClick = onImportPdf, enabled = uiState.pdfImport == null) {
                             Text(stringResource(R.string.import_pdf))
                         }
-                        IconButton(onClick = onOpenTrash) {
-                            Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.trash))
-                        }
+                        ListMenu(
+                            showNewFolder = uiState.folderId == null,
+                            onNewFolder = {
+                                newFolderFor = null
+                                showNewFolder = true
+                            },
+                            onOpenTrash = onOpenTrash,
+                        )
                     },
                 )
                 uiState.pdfImport?.let { progress ->
@@ -207,7 +258,18 @@ fun DocumentListScreen(
                 CircularProgressIndicator()
             }
 
-            uiState.documents.isEmpty() -> EmptyState(Modifier.padding(innerPadding))
+            uiState.isEmpty && uiState.folderId == null -> EmptyState(Modifier.padding(innerPadding))
+
+            uiState.isEmpty -> Text(
+                text = stringResource(R.string.folder_empty),
+                style = MaterialTheme.typography.bodyMedium,
+                color = NolvaTheme.colors.inkMuted,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(innerPadding)
+                    .padding(32.dp),
+            )
 
             else -> Column(
                 modifier = Modifier
@@ -221,10 +283,15 @@ fun DocumentListScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 4.dp),
                 )
-                if (uiState.visibleDocuments.isEmpty()) {
+                if (uiState.visibleDocuments.isEmpty() && uiState.visibleFolders.isEmpty()) {
                     NoResults(uiState.query)
                 } else {
                     DocumentList(
+                        folders = uiState.visibleFolders,
+                        onOpenFolder = onOpenFolder,
+                        onRenameFolder = { renamingFolderId = it.id },
+                        onDeleteFolder = { deletingFolderId = it.id },
+                        onMove = { movingId = it.id },
                         documents = uiState.visibleDocuments,
                         // Only while searching; stale matches never show on the full list.
                         matches = if (uiState.query.isBlank()) emptyMap() else uiState.contentMatches,
@@ -252,6 +319,74 @@ fun DocumentListScreen(
         )
     }
 
+    uiState.documents.find { it.id == movingId }?.let { document ->
+        MoveDialog(
+            document = document,
+            folders = uiState.folders,
+            onMove = { folderId ->
+                movingId = null
+                if (folderId != document.folderId) onMoveDocument(document.id, folderId)
+            },
+            onNewFolder = {
+                movingId = null
+                newFolderFor = document.id
+                showNewFolder = true
+            },
+            onDismiss = { movingId = null },
+        )
+    }
+
+    if (showNewFolder) {
+        TitleDialog(
+            heading = stringResource(R.string.new_folder),
+            initialTitle = "",
+            confirmLabel = stringResource(R.string.create),
+            onConfirm = { name ->
+                showNewFolder = false
+                onCreateFolder(name, newFolderFor)
+                newFolderFor = null
+            },
+            onDismiss = {
+                showNewFolder = false
+                newFolderFor = null
+            },
+        )
+    }
+
+    uiState.folders.find { it.id == renamingFolderId }?.let { folder ->
+        TitleDialog(
+            heading = stringResource(R.string.rename_folder),
+            initialTitle = folder.name,
+            confirmLabel = stringResource(R.string.save),
+            onConfirm = { name ->
+                renamingFolderId = null
+                if (name != folder.name) onRenameFolder(folder.id, name)
+            },
+            onDismiss = { renamingFolderId = null },
+        )
+    }
+
+    uiState.folders.find { it.id == deletingFolderId }?.let { folder ->
+        AlertDialog(
+            onDismissRequest = { deletingFolderId = null },
+            title = { Text(stringResource(R.string.delete_folder_title, folder.name)) },
+            text = { Text(stringResource(R.string.delete_folder_body)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        deletingFolderId = null
+                        onDeleteFolder(folder.id)
+                    },
+                ) {
+                    Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deletingFolderId = null }) { Text(stringResource(R.string.cancel)) }
+            },
+        )
+    }
+
     uiState.documents.find { it.id == renamingId }?.let { document ->
         TitleDialog(
             heading = stringResource(R.string.rename_document),
@@ -268,6 +403,11 @@ fun DocumentListScreen(
 
 @Composable
 private fun DocumentList(
+    folders: List<Folder>,
+    onOpenFolder: (Folder) -> Unit,
+    onRenameFolder: (Folder) -> Unit,
+    onDeleteFolder: (Folder) -> Unit,
+    onMove: (Document) -> Unit,
     documents: List<Document>,
     matches: Map<String, TextMatch>,
     contentPadding: PaddingValues,
@@ -287,16 +427,150 @@ private fun DocumentList(
         ),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        items(folders, key = { "folder-${it.id}" }) { folder ->
+            FolderRow(
+                folder = folder,
+                onClick = { onOpenFolder(folder) },
+                onRename = { onRenameFolder(folder) },
+                onDelete = { onDeleteFolder(folder) },
+            )
+        }
         items(documents, key = { it.id }) { document ->
             DocumentRow(
                 document = document,
                 match = matches[document.id],
                 onClick = { onOpenDocument(document) },
                 onRename = { onRename(document) },
+                onMove = { onMove(document) },
                 onDuplicate = { onDuplicate(document) },
                 onDelete = { onDelete(document) },
             )
         }
+    }
+}
+
+/** A folder, tinted so it stands apart from the documents below it. */
+@Composable
+private fun FolderRow(folder: Folder, onClick: () -> Unit, onRename: () -> Unit, onDelete: () -> Unit) {
+    Card(
+        onClick = onClick,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 16.dp, top = 14.dp, bottom = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = folder.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = pluralStringResource(R.plurals.folder_document_count, folder.documentCount, folder.documentCount),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+            }
+            Box {
+                var expanded by remember { mutableStateOf(false) }
+                IconButton(onClick = { expanded = true }) {
+                    Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.more_options))
+                }
+                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.rename)) },
+                        onClick = {
+                            expanded = false
+                            onRename()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) },
+                        onClick = {
+                            expanded = false
+                            onDelete()
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Overflow menu of the top bar. */
+@Composable
+private fun ListMenu(showNewFolder: Boolean, onNewFolder: () -> Unit, onOpenTrash: () -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { expanded = true }) {
+            Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.more_options))
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            if (showNewFolder) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.new_folder)) },
+                    onClick = {
+                        expanded = false
+                        onNewFolder()
+                    },
+                )
+            }
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.trash)) },
+                onClick = {
+                    expanded = false
+                    onOpenTrash()
+                },
+            )
+        }
+    }
+}
+
+/** Where to move a document: the top level, a folder, or a new folder. */
+@Composable
+private fun MoveDialog(
+    document: Document,
+    folders: List<Folder>,
+    onMove: (folderId: String?) -> Unit,
+    onNewFolder: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.move_to_folder)) },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                MoveOption(stringResource(R.string.top_level), selected = document.folderId == null) { onMove(null) }
+                folders.forEach { folder ->
+                    MoveOption(folder.name, selected = folder.id == document.folderId) { onMove(folder.id) }
+                }
+                TextButton(onClick = onNewFolder) { Text(stringResource(R.string.new_folder_ellipsis)) }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        },
+    )
+}
+
+@Composable
+private fun MoveOption(label: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+            .padding(vertical = 10.dp),
+    ) {
+        RadioButton(selected = selected, onClick = null)
+        Spacer(Modifier.width(12.dp))
+        Text(label, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -306,6 +580,7 @@ private fun DocumentRow(
     match: TextMatch?,
     onClick: () -> Unit,
     onRename: () -> Unit,
+    onMove: () -> Unit,
     onDuplicate: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -313,7 +588,7 @@ private fun DocumentRow(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Cover(document)
             DocumentSummary(document, match, Modifier.weight(1f))
-            DocumentMenu(onRename = onRename, onDuplicate = onDuplicate, onDelete = onDelete)
+            DocumentMenu(onRename = onRename, onMove = onMove, onDuplicate = onDuplicate, onDelete = onDelete)
         }
     }
 }
@@ -401,7 +676,7 @@ private fun NoResults(query: String) {
 }
 
 @Composable
-private fun DocumentMenu(onRename: () -> Unit, onDuplicate: () -> Unit, onDelete: () -> Unit) {
+private fun DocumentMenu(onRename: () -> Unit, onMove: () -> Unit, onDuplicate: () -> Unit, onDelete: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { expanded = true }) {
@@ -413,6 +688,13 @@ private fun DocumentMenu(onRename: () -> Unit, onDuplicate: () -> Unit, onDelete
                 onClick = {
                     expanded = false
                     onRename()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.move_to_folder)) },
+                onClick = {
+                    expanded = false
+                    onMove()
                 },
             )
             DropdownMenuItem(
@@ -541,6 +823,8 @@ private fun DocumentListMessage.textRes(): Int = when (this) {
     DocumentListMessage.PdfImportFailed -> R.string.error_import_pdf
     DocumentListMessage.RestoreFailed -> R.string.error_restore_document
     DocumentListMessage.DuplicateFailed -> R.string.error_duplicate_document
+    DocumentListMessage.FolderFailed -> R.string.error_folder
+    DocumentListMessage.MoveFailed -> R.string.error_move_document
 }
 
 private val previewDocuments = listOf(

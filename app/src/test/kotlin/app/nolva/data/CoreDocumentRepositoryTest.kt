@@ -4,6 +4,7 @@ import app.nolva.core.CleanupInfo
 import app.nolva.core.DocumentInfo
 import app.nolva.core.DocxExportInfo
 import app.nolva.core.DocxOptions
+import app.nolva.core.FolderInfo
 import app.nolva.core.NolvaCoreInterface
 import app.nolva.core.NolvaException
 import app.nolva.core.PageCorners
@@ -49,6 +50,8 @@ class CoreDocumentRepositoryTest {
                 pageCount = 0u,
                 coverPath = null,
                 trashedAtMs = null,
+                folderId = null,
+                sizeBytes = 0u,
             ).also { documents += it }
         }
 
@@ -82,6 +85,30 @@ class CoreDocumentRepositoryTest {
         override fun exportDocx(documentId: String, outputPath: String, options: DocxOptions): DocxExportInfo {
             docxOptions = options
             return DocxExportInfo(pageCount = 3u, sizeBytes = 2048u, pagesPendingText = 1u)
+        }
+
+        val folders = mutableListOf<FolderInfo>()
+        var moved: Pair<List<String>, String?>? = null
+
+        override fun createDocumentInFolder(title: String, folderId: String?): DocumentInfo =
+            createDocument(title).copy(folderId = folderId).also { documents[documents.lastIndex] = it }
+
+        override fun createFolder(name: String): FolderInfo =
+            FolderInfo("folder-${folders.size}", name, createdAtMs = 1, updatedAtMs = 2, documentCount = 0u)
+                .also { folders += it }
+
+        override fun listFolders(): List<FolderInfo> = folders
+
+        override fun renameFolder(folderId: String, name: String): FolderInfo =
+            folders.first { it.id == folderId }.copy(name = name)
+
+        override fun deleteFolder(folderId: String) {
+            folders.removeAll { it.id == folderId }
+        }
+
+        override fun moveDocuments(documentIds: List<String>, folderId: String?): UInt {
+            moved = documentIds to folderId
+            return documentIds.size.toUInt()
         }
 
         override fun moveDocumentToTrash(documentId: String) {
@@ -129,6 +156,8 @@ class CoreDocumentRepositoryTest {
                 pageCount = 2u,
                 coverPath = "/data/nolva/$documentId/cover.jpg",
                 trashedAtMs = null,
+                folderId = null,
+                sizeBytes = 0u,
             )
         }
 
@@ -219,6 +248,23 @@ class CoreDocumentRepositoryTest {
 
         assertEquals(DocxExport(File("/tmp/out.docx"), 3, 2048, 1), export)
         assertEquals(DocxOptions(includeImages = true), core.docxOptions)
+    }
+
+    @Test
+    fun `maps folders and document placement`() = runTest(dispatcher) {
+        val core = FakeCore()
+        val repository = CoreDocumentRepository(dispatcher) { core }
+
+        val folder = repository.createFolder("Cuentas")
+        val inside = repository.createDocumentIn("Luz", folder.id)
+
+        assertEquals(Folder("folder-0", "Cuentas", Instant.ofEpochMilli(1), Instant.ofEpochMilli(2), 0), folder)
+        assertEquals(folder.id, inside.folderId)
+        assertEquals("Hogar", repository.renameFolder(folder.id, "Hogar").name)
+        assertEquals(2, repository.moveDocuments(listOf("a", "b"), null))
+        assertEquals(listOf("a", "b") to null, core.moved)
+        repository.deleteFolder(folder.id)
+        assertEquals(emptyList<Folder>(), repository.listFolders())
     }
 
     @Test

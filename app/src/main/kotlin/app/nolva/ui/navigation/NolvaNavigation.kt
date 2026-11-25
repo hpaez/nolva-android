@@ -35,6 +35,9 @@ data object DocumentListKey : NavKey
 data object TrashKey : NavKey
 
 @Serializable
+data class FolderKey(val folderId: String, val name: String) : NavKey
+
+@Serializable
 data class DocumentDetailKey(val documentId: String, val title: String) : NavKey
 
 @Serializable
@@ -63,23 +66,24 @@ fun NolvaNavigation(container: AppContainer, modifier: Modifier = Modifier) {
         entryProvider = entryProvider {
             entry<DocumentListKey> {
                 DocumentListRoute(
-                    viewModel = viewModel(
-                        factory = viewModelFactory {
-                            initializer {
-                                DocumentListViewModel(
-                                    repository = container.documentRepository,
-                                    editor = container.documentEditor,
-                                    textStore = container.pageTextStore,
-                                    pdfImporter = container.pdfImporter,
-                                    trash = container.documentTrash,
-                                )
-                            }
-                        },
-                    ),
+                    viewModel = viewModel(factory = documentListFactory(container, folderId = null)),
                     onOpenDocument = { document ->
                         backStack.add(DocumentDetailKey(document.id, document.title))
                     },
                     onOpenTrash = { backStack.add(TrashKey) },
+                    onOpenFolder = { folder -> backStack.add(FolderKey(folder.id, folder.name)) },
+                )
+            }
+            entry<FolderKey> { key ->
+                DocumentListRoute(
+                    viewModel = viewModel(factory = documentListFactory(container, folderId = key.folderId)),
+                    onOpenDocument = { document ->
+                        backStack.add(DocumentDetailKey(document.id, document.title))
+                    },
+                    onOpenTrash = { backStack.add(TrashKey) },
+                    onOpenFolder = {}, // Folders don't nest.
+                    folderName = key.name,
+                    onBack = { backStack.removeLastOrNull() },
                 )
             }
             entry<TrashKey> {
@@ -171,4 +175,19 @@ fun NolvaNavigation(container: AppContainer, modifier: Modifier = Modifier) {
             }
         },
     )
+}
+
+/** The document list of the top level ([folderId] `null`) or of a folder. */
+private fun documentListFactory(container: AppContainer, folderId: String?) = viewModelFactory {
+    initializer {
+        DocumentListViewModel(
+            folderId = folderId,
+            repository = container.documentRepository,
+            editor = container.documentEditor,
+            textStore = container.pageTextStore,
+            pdfImporter = container.pdfImporter,
+            trash = container.documentTrash,
+            folderStore = container.folderStore,
+        )
+    }
 }

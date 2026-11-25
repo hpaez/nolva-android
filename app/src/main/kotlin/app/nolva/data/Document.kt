@@ -17,6 +17,20 @@ data class Document(
     val coverFile: File? = null,
     /** When it was moved to the trash; `null` while it isn't. */
     val trashedAt: Instant? = null,
+    /** Folder it's in; `null` for the top level. */
+    val folderId: String? = null,
+    /** Bytes its page images take; 0 when the listing didn't compute it. */
+    val sizeBytes: Long = 0,
+)
+
+/** A folder of documents. Folders don't nest. */
+data class Folder(
+    val id: String,
+    val name: String,
+    val createdAt: Instant,
+    val updatedAt: Instant,
+    /** Documents in it, not counting trashed ones. */
+    val documentCount: Int,
 )
 
 data class Page(

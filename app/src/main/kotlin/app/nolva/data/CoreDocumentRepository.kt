@@ -2,6 +2,7 @@ package app.nolva.data
 
 import app.nolva.core.DocumentInfo
 import app.nolva.core.DocxOptions
+import app.nolva.core.FolderInfo
 import app.nolva.core.NolvaCoreInterface
 import app.nolva.core.NolvaException
 import app.nolva.core.PageCorners
@@ -40,6 +41,7 @@ class CoreDocumentRepository(
     PdfExporter,
     DocxExporter,
     DocumentTrash,
+    FolderStore,
     OrphanFileCleaner,
     PageTextStore {
 
@@ -67,6 +69,30 @@ class CoreDocumentRepository(
 
     override suspend fun deleteDocument(documentId: String) = call {
         core.deleteDocument(documentId)
+    }
+
+    override suspend fun listFolders(): List<Folder> = call {
+        core.listFolders().map { it.toFolder() }
+    }
+
+    override suspend fun createFolder(name: String): Folder = call {
+        core.createFolder(name).toFolder()
+    }
+
+    override suspend fun renameFolder(folderId: String, name: String): Folder = call {
+        core.renameFolder(folderId, name).toFolder()
+    }
+
+    override suspend fun deleteFolder(folderId: String) = call {
+        core.deleteFolder(folderId)
+    }
+
+    override suspend fun moveDocuments(documentIds: List<String>, folderId: String?): Int = call {
+        core.moveDocuments(documentIds, folderId).toInt()
+    }
+
+    override suspend fun createDocumentIn(title: String, folderId: String?): Document = call {
+        core.createDocumentInFolder(title, folderId).toDocument()
     }
 
     override suspend fun duplicateDocument(documentId: String, title: String): Document = call {
@@ -162,6 +188,16 @@ private fun DocumentInfo.toDocument() = Document(
     pageCount = pageCount.toInt(),
     coverFile = coverPath?.let(::File),
     trashedAt = trashedAtMs?.let(Instant::ofEpochMilli),
+    folderId = folderId,
+    sizeBytes = sizeBytes.toLong(),
+)
+
+private fun FolderInfo.toFolder() = Folder(
+    id = id,
+    name = name,
+    createdAt = Instant.ofEpochMilli(createdAtMs),
+    updatedAt = Instant.ofEpochMilli(updatedAtMs),
+    documentCount = documentCount.toInt(),
 )
 
 private fun PageInfo.toPage() = Page(

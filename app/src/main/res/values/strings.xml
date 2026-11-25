@@ -65,6 +65,20 @@
     <string name="export">Export</string>
     <string name="import_pdf">Import PDF</string>
     <string name="duplicate">Duplicate</string>
+    <string name="new_folder">New folder</string>
+    <string name="new_folder_ellipsis">New folder…</string>
+    <string name="rename_folder">Rename folder</string>
+    <string name="delete_folder_title">Delete “%1$s”?</string>
+    <string name="delete_folder_body">Its documents are kept and move to Home.</string>
+    <string name="folder_empty">This folder is empty. Move documents here from their menu, or create one.</string>
+    <plurals name="folder_document_count">
+        <item quantity="one">%1$d document</item>
+        <item quantity="other">%1$d documents</item>
+    </plurals>
+    <string name="move_to_folder">Move to folder</string>
+    <string name="top_level">Home (no folder)</string>
+    <string name="error_folder">Couldn\'t save the folder.</string>
+    <string name="error_move_document">Couldn\'t move the document.</string>
     <string name="copy_title">%1$s (copy)</string>
     <string name="moved_to_trash">“%1$s” moved to the trash</string>
     <string name="undo">Undo</string>
