@@ -19,7 +19,16 @@ data class PdfSettings(
     val paperSize: PaperSize = PaperSize.A4,
     /** Print "n / total" at the bottom of each page. */
     val pageNumbers: Boolean = false,
-)
+    /** Needed to open the PDF (AES-256), or `null`. 1 to [MAX_PDF_PASSWORD_BYTES] UTF-8 bytes. */
+    val password: String? = null,
+) {
+    // Never print the password, e.g. in logs or crash reports.
+    override fun toString() =
+        "PdfSettings(paperSize=$paperSize, pageNumbers=$pageNumbers, password=${password?.let { "***" }})"
+}
+
+/** Longest PDF password, in UTF-8 bytes: what PDF readers compare. */
+const val MAX_PDF_PASSWORD_BYTES = 127
 
 data class PdfExport(val file: File, val pageCount: Int, val sizeBytes: Long)
 
@@ -29,7 +38,8 @@ fun interface PdfExporter {
      * Writes the document to [output] (its folder must exist), one page per
      * page, using cropped images when available.
      *
-     * @throws DocumentException.InvalidInput if the document has no pages.
+     * @throws DocumentException.InvalidInput if the document has no pages
+     *   or the password is empty or too long.
      */
     suspend fun exportPdf(documentId: String, output: File, settings: PdfSettings): PdfExport
 }

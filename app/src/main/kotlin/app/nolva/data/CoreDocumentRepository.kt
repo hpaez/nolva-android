@@ -128,6 +128,7 @@ class CoreDocumentRepository(
             paperSize = settings.paperSize.toCore(),
             marginMm = 0f,
             pageNumbers = settings.pageNumbers,
+            password = settings.password,
         )
         val info = core.exportPdf(documentId, output.absolutePath, options)
         PdfExport(output, info.pageCount.toInt(), info.sizeBytes.toLong())

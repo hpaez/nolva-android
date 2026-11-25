@@ -293,6 +293,22 @@ class DocumentDetailViewModelTest {
     }
 
     @Test
+    fun `password protected pdfs pass the password once`() = runTest(dispatcher) {
+        val exporter = FakeExporter()
+        val viewModel = viewModel(FakeRepository(listOf(page("a", 0))), FakeImporter(), exporter)
+        advanceUntilIdle()
+
+        viewModel.exportPdf("Contrato", PaperSize.A4, password = "1234")
+        advanceUntilIdle()
+        viewModel.exportPdf("Contrato", PaperSize.A4)
+        advanceUntilIdle()
+
+        val settings = exporter.exported.map { it.second }
+        assertEquals(listOf("1234", null), settings.map { it.password })
+        assertFalse("never printed", settings.first().toString().contains("1234"))
+    }
+
+    @Test
     fun `reports export failures`() = runTest(dispatcher) {
         val viewModel = viewModel(FakeRepository(), FakeImporter(), FakeExporter(DocumentException.InvalidInput("empty")))
         viewModel.exportPdf("Vacío", PaperSize.A4)
