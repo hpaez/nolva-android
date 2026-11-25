@@ -1,6 +1,8 @@
 package app.nolva.ui.viewer
 
 import android.content.ClipData
+import androidx.annotation.DrawableRes
+import androidx.annotation.StringRes
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -11,6 +13,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -56,6 +59,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -86,6 +90,8 @@ fun PageViewerRoute(
         stringResource(
             when (it) {
                 PageViewerMessage.FilterFailed -> R.string.error_apply_filter
+                PageViewerMessage.RotateFailed -> R.string.error_rotate_page
+                PageViewerMessage.UndoFailed -> R.string.error_restore_page
                 PageViewerMessage.ShareFailed -> R.string.error_share_page
                 PageViewerMessage.TextPending -> R.string.text_pending
                 PageViewerMessage.TextFailed -> R.string.error_load_text
@@ -126,9 +132,16 @@ fun PageViewerRoute(
             else -> PagePager(
                 pages = uiState.pages,
                 initialPage = initialPage.coerceIn(0, uiState.pages.lastIndex),
-                filteringPageId = uiState.filteringPageId,
+                renderingPageId = uiState.renderingPageId,
+                bulkProgress = uiState.bulkProgress,
+                canUndo = uiState.canUndo,
+                canRedo = uiState.canRedo,
                 onAdjustCrop = onAdjustCrop,
                 onApplyFilter = viewModel::applyFilter,
+                onApplyFilterToAll = viewModel::applyFilterToAll,
+                onRotate = viewModel::rotate,
+                onUndo = viewModel::undo,
+                onRedo = viewModel::redo,
                 onShare = viewModel::sharePage,
                 onShowText = viewModel::showText,
             )
@@ -138,7 +151,7 @@ fun PageViewerRoute(
             hostState = snackbarHostState,
             modifier = Modifier
                 .navigationBarsPadding()
-                .padding(bottom = 72.dp)
+                .padding(bottom = 128.dp)
                 .align(Alignment.BottomCenter),
         )
 
@@ -204,9 +217,16 @@ private fun PageTextSheet(shown: ShownText, onDismiss: () -> Unit) {
 private fun PagePager(
     pages: List<Page>,
     initialPage: Int,
-    filteringPageId: String?,
+    renderingPageId: String?,
+    bulkProgress: BulkProgress?,
+    canUndo: Boolean,
+    canRedo: Boolean,
     onAdjustCrop: (String) -> Unit,
     onApplyFilter: (pageId: String, filter: PageFilter) -> Unit,
+    onApplyFilterToAll: (PageFilter) -> Unit,
+    onRotate: (pageId: String, clockwise: Boolean) -> Unit,
+    onUndo: () -> Unit,
+    onRedo: () -> Unit,
     onShare: (pageId: String) -> Unit,
     onShowText: (pageId: String) -> Unit,
 ) {
@@ -248,20 +268,53 @@ private fun PagePager(
         }
 
         val current = pages[pagerState.currentPage]
-        if (current.id == filteringPageId) {
+        val busy = renderingPageId != null || bulkProgress != null
+        if (bulkProgress != null) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .background(Color.Black.copy(alpha = 0.7f), MaterialTheme.shapes.medium)
+                    .padding(24.dp),
+            ) {
+                CircularProgressIndicator(color = Color.White)
+                Text(
+                    stringResource(R.string.applying_to_pages, bulkProgress.done, bulkProgress.total),
+                    color = Color.White,
+                )
+            }
+        } else if (current.id == renderingPageId) {
             CircularProgressIndicator(color = Color.White, modifier = Modifier.align(Alignment.Center))
         }
-        FilterBar(
-            selected = current.filter,
-            enabled = filteringPageId == null,
-            onSelect = { filter -> onApplyFilter(current.id, filter) },
+        Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .background(Color.Black.copy(alpha = 0.6f))
                 .navigationBarsPadding()
-                .padding(vertical = 8.dp),
-        )
+                .padding(vertical = 4.dp),
+        ) {
+            EditBar(
+                enabled = !busy,
+                canUndo = canUndo,
+                canRedo = canRedo,
+                // Only worth offering when some page would change.
+                showApplyToAll = pages.size > 1 && pages.any { it.filter != current.filter },
+                onRotate = { clockwise -> onRotate(current.id, clockwise) },
+                onApplyToAll = { onApplyFilterToAll(current.filter) },
+                onUndo = onUndo,
+                onRedo = onRedo,
+            )
+            FilterBar(
+                selected = current.filter,
+                enabled = !busy,
+                onSelect = { filter -> onApplyFilter(current.id, filter) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 4.dp),
+            )
+        }
 
         Text(
             text = stringResource(R.string.page_counter, pagerState.currentPage + 1, pages.size),
@@ -271,6 +324,51 @@ private fun PagePager(
                 .statusBarsPadding()
                 .padding(top = 20.dp)
                 .align(Alignment.TopCenter),
+        )
+    }
+}
+
+@Composable
+private fun EditBar(
+    enabled: Boolean,
+    canUndo: Boolean,
+    canRedo: Boolean,
+    showApplyToAll: Boolean,
+    onRotate: (clockwise: Boolean) -> Unit,
+    onApplyToAll: () -> Unit,
+    onUndo: () -> Unit,
+    onRedo: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp),
+    ) {
+        EditIcon(R.drawable.ic_rotate_left, R.string.rotate_left, enabled) { onRotate(false) }
+        EditIcon(R.drawable.ic_rotate_right, R.string.rotate_right, enabled) { onRotate(true) }
+        Spacer(Modifier.weight(1f))
+        if (showApplyToAll) {
+            TextButton(onClick = onApplyToAll, enabled = enabled) {
+                Text(
+                    stringResource(R.string.apply_filter_to_all),
+                    color = if (enabled) Color.White else Color.White.copy(alpha = 0.4f),
+                )
+            }
+        }
+        Spacer(Modifier.weight(1f))
+        EditIcon(R.drawable.ic_undo, R.string.undo, enabled && canUndo, onUndo)
+        EditIcon(R.drawable.ic_redo, R.string.redo, enabled && canRedo, onRedo)
+    }
+}
+
+@Composable
+private fun EditIcon(@DrawableRes icon: Int, @StringRes label: Int, enabled: Boolean, onClick: () -> Unit) {
+    IconButton(onClick = onClick, enabled = enabled) {
+        Icon(
+            painter = painterResource(icon),
+            contentDescription = stringResource(label),
+            tint = if (enabled) Color.White else Color.White.copy(alpha = 0.35f),
         )
     }
 }

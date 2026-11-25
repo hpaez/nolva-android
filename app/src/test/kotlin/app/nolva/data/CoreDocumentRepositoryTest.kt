@@ -182,6 +182,25 @@ class CoreDocumentRepositoryTest {
             return pageInfo("doc-1").copy(processedPath = "/data/nolva/doc-1/filtered.jpg", filter = filter)
         }
 
+        var rotatedClockwise: Boolean? = null
+
+        override fun rotatePage(pageId: String, clockwise: Boolean): PageInfo {
+            rotatedClockwise = clockwise
+            return pageInfo("doc-1").copy(processedPath = "/data/nolva/doc-1/rotated.jpg", rotationDegrees = 90u)
+        }
+
+        var renderedWith: Triple<PageCorners?, CorePageFilter, UInt>? = null
+
+        override fun setPageRendering(
+            pageId: String,
+            corners: PageCorners?,
+            filter: CorePageFilter,
+            rotationDegrees: UInt,
+        ): PageInfo {
+            renderedWith = Triple(corners, filter, rotationDegrees)
+            return pageInfo("doc-1").copy(corners = corners, filter = filter, rotationDegrees = rotationDegrees)
+        }
+
         private fun pageInfo(documentId: String) = PageInfo(
             id = "page-0",
             documentId = documentId,
@@ -190,6 +209,7 @@ class CoreDocumentRepositoryTest {
             processedPath = null,
             corners = null,
             filter = CorePageFilter.ORIGINAL,
+            rotationDegrees = 0u,
             createdAtMs = 3_000,
         )
     }
@@ -392,6 +412,23 @@ class CoreDocumentRepositoryTest {
             assertEquals(File("/data/nolva/doc-1/filtered.jpg"), page.displayFile)
         }
         assertEquals(CorePageFilter.ENHANCED, core.filteredWith)
+    }
+
+    @Test
+    fun `rotates and restores whole renderings`() = runTest(dispatcher) {
+        val core = FakeCore()
+        val repository = CoreDocumentRepository(dispatcher) { core }
+
+        val turned = repository.rotatePage("page-0", clockwise = false)
+        assertEquals(false, core.rotatedClockwise)
+        assertEquals(90, turned.rotationDegrees)
+        assertEquals(File("/data/nolva/doc-1/rotated.jpg"), turned.displayFile)
+
+        val corners = repository.detectCorners("page-0")!!.corners
+        val rendering = PageRendering(corners, PageFilter.Grayscale, 270)
+        val restored = repository.setRendering("page-0", rendering)
+        assertEquals(Triple(coreCorners, CorePageFilter.GRAYSCALE, 270u), core.renderedWith)
+        assertEquals(rendering, restored.rendering)
     }
 
     @Test
