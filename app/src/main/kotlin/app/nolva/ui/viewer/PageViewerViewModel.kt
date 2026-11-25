@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.nolva.data.DocumentRepository
 import app.nolva.data.Page
+import app.nolva.data.PageAnnotation
+import app.nolva.data.PageAnnotator
 import app.nolva.data.PageCropper
 import app.nolva.data.PageFilter
 import app.nolva.data.PageRendering
@@ -38,6 +40,8 @@ data class PageViewerUiState(
     val pendingShare: File? = null,
     /** Recognized text being shown; cleared with [PageViewerViewModel.textDismissed]. */
     val shownText: ShownText? = null,
+    /** Each page's annotations, drawn over it; pages not loaded yet have none. */
+    val annotations: Map<String, List<PageAnnotation>> = emptyMap(),
 ) {
     /** Whether an edit is running; only one runs at a time. */
     val isBusy: Boolean get() = renderingPageId != null || bulkProgress != null
@@ -60,6 +64,7 @@ class PageViewerViewModel(
     private val repository: DocumentRepository,
     private val cropper: PageCropper,
     private val textStore: PageTextStore,
+    private val annotator: PageAnnotator,
     /** Shareable folder exposed by the FileProvider. */
     private val exportDir: File,
     private val ioDispatcher: CoroutineDispatcher,
@@ -95,6 +100,22 @@ class PageViewerViewModel(
                     onFailure = { state.copy(isLoading = false, loadFailed = true) },
                 )
             }
+            result.onSuccess { pages -> loadAnnotations(pages.map { it.id }) }
+        }
+    }
+
+    /**
+     * (Re)loads annotations of [pageIds]: after opening, after the editor,
+     * and after rotations, which turn them. A page whose annotations can't
+     * be read is shown without them.
+     */
+    private fun loadAnnotations(pageIds: List<String>) {
+        if (pageIds.isEmpty()) return
+        viewModelScope.launch {
+            val loaded = pageIds.associateWith { id ->
+                runSuspendCatching { annotator.getAnnotations(id) }.getOrDefault(emptyList())
+            }
+            _uiState.update { it.copy(annotations = it.annotations + loaded) }
         }
     }
 
@@ -196,6 +217,7 @@ class PageViewerViewModel(
             }
             // On failure the edit stays where it was, to be retried.
             if (failed) from.addLast(edit) else to.addLast(edit)
+            loadAnnotations(edit.map { it.pageId })
             _uiState.update {
                 it.copy(
                     renderingPageId = null,
@@ -213,7 +235,10 @@ class PageViewerViewModel(
         _uiState.update { it.copy(renderingPageId = pageId) }
         viewModelScope.launch {
             val result = runSuspendCatching { action() }
-            result.onSuccess { record(listOf(PageChange(pageId, page.rendering, it.rendering))) }
+            result.onSuccess {
+                record(listOf(PageChange(pageId, page.rendering, it.rendering)))
+                loadAnnotations(listOf(pageId))
+            }
             _uiState.update { current ->
                 result.fold(
                     onSuccess = { current.copy(renderingPageId = null, pages = current.pages.replacing(it)) },

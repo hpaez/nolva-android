@@ -14,6 +14,8 @@ import app.nolva.core.TextRect as CoreRect
 import app.nolva.core.PdfOptions
 import app.nolva.core.PaperSize as CorePaperSize
 import app.nolva.core.NormalizedPoint as CorePoint
+import app.nolva.core.PageAnnotation as CoreAnnotation
+import app.nolva.core.SignatureInfo
 import java.io.File
 import java.time.Instant
 import kotlinx.coroutines.CoroutineDispatcher
@@ -43,7 +45,8 @@ class CoreDocumentRepository(
     DocumentTrash,
     FolderStore,
     OrphanFileCleaner,
-    PageTextStore {
+    PageTextStore,
+    PageAnnotator {
 
     private val core by lazy(coreFactory)
 
@@ -189,6 +192,26 @@ class CoreDocumentRepository(
         core.searchText(query).map { TextMatch(it.documentId, it.pageId, it.pagePosition.toInt(), it.snippet) }
     }
 
+    override suspend fun getAnnotations(pageId: String): List<PageAnnotation> = call {
+        core.getPageAnnotations(pageId).map { it.toAnnotation() }
+    }
+
+    override suspend fun setAnnotations(pageId: String, annotations: List<PageAnnotation>) = call {
+        core.setPageAnnotations(pageId, annotations.map { it.toCore() })
+    }
+
+    override suspend fun listSignatures(): List<Signature> = call {
+        core.listSignatures().map { it.toSignature() }
+    }
+
+    override suspend fun saveSignature(strokes: List<List<NormalizedPoint>>, aspectRatio: Float): Signature = call {
+        core.saveSignature(strokes.toCoreStrokes(), aspectRatio).toSignature()
+    }
+
+    override suspend fun deleteSignature(signatureId: String) = call {
+        core.deleteSignature(signatureId)
+    }
+
     private suspend fun <T> call(block: () -> T): T = withContext(ioDispatcher) {
         try {
             block()
@@ -294,3 +317,21 @@ private fun NolvaException.toDocumentException(): DocumentException = when (this
     is NolvaException.Storage -> DocumentException.Storage(reason, this)
     is NolvaException.Conflict -> DocumentException.Conflict(reason, this)
 }
+
+private fun List<List<NormalizedPoint>>.toCoreStrokes() = map { stroke -> stroke.map { it.toCorePoint() } }
+
+private fun List<List<CorePoint>>.toAppStrokes() = map { stroke -> stroke.map { it.toPoint() } }
+
+private fun CoreAnnotation.toAnnotation(): PageAnnotation = when (this) {
+    is CoreAnnotation.Ink -> PageAnnotation.Ink(strokes.toAppStrokes(), color.toInt(), width)
+    is CoreAnnotation.Highlight -> PageAnnotation.Highlight(left, top, right, bottom, color.toInt())
+    is CoreAnnotation.Text -> PageAnnotation.Text(text, x, y, size, color.toInt())
+}
+
+private fun PageAnnotation.toCore(): CoreAnnotation = when (this) {
+    is PageAnnotation.Ink -> CoreAnnotation.Ink(strokes.toCoreStrokes(), color.toUInt(), width)
+    is PageAnnotation.Highlight -> CoreAnnotation.Highlight(left, top, right, bottom, color.toUInt())
+    is PageAnnotation.Text -> CoreAnnotation.Text(text, x, y, size, color.toUInt())
+}
+
+private fun SignatureInfo.toSignature() = Signature(id, strokes.toAppStrokes(), aspectRatio)

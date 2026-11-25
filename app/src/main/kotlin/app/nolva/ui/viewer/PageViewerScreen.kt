@@ -54,7 +54,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
@@ -66,9 +65,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.nolva.R
 import app.nolva.data.Page
+import app.nolva.data.PageAnnotation
 import app.nolva.data.PageFilter
+import app.nolva.ui.annotate.AnnotatedPageImage
 import app.nolva.ui.share.shareFile
-import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 
 private const val MAX_ZOOM = 5f
@@ -80,6 +80,7 @@ fun PageViewerRoute(
     initialPage: Int,
     onClose: () -> Unit,
     onAdjustCrop: (pageId: String) -> Unit,
+    onAnnotate: (pageId: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -136,7 +137,9 @@ fun PageViewerRoute(
                 bulkProgress = uiState.bulkProgress,
                 canUndo = uiState.canUndo,
                 canRedo = uiState.canRedo,
+                annotations = uiState.annotations,
                 onAdjustCrop = onAdjustCrop,
+                onAnnotate = onAnnotate,
                 onApplyFilter = viewModel::applyFilter,
                 onApplyFilterToAll = viewModel::applyFilterToAll,
                 onRotate = viewModel::rotate,
@@ -221,7 +224,9 @@ private fun PagePager(
     bulkProgress: BulkProgress?,
     canUndo: Boolean,
     canRedo: Boolean,
+    annotations: Map<String, List<PageAnnotation>>,
     onAdjustCrop: (String) -> Unit,
+    onAnnotate: (String) -> Unit,
     onApplyFilter: (pageId: String, filter: PageFilter) -> Unit,
     onApplyFilterToAll: (PageFilter) -> Unit,
     onRotate: (pageId: String, clockwise: Boolean) -> Unit,
@@ -234,6 +239,7 @@ private fun PagePager(
     // Swiping between pages is disabled while the current page is zoomed in,
     // so dragging pans the image instead of changing page.
     var currentPageZoomed by remember { mutableStateOf(false) }
+    val busy = renderingPageId != null || bulkProgress != null
 
     Box(modifier = Modifier.fillMaxSize()) {
         HorizontalPager(
@@ -244,6 +250,7 @@ private fun PagePager(
         ) { index ->
             ZoomablePage(
                 page = pages[index],
+                annotations = annotations[pages[index].id].orEmpty(),
                 // Only the visible page reports its zoom state.
                 onZoomChanged = { zoomed -> if (index == pagerState.currentPage) currentPageZoomed = zoomed },
             )
@@ -262,13 +269,15 @@ private fun PagePager(
             IconButton(onClick = { onShare(pages[pagerState.currentPage].id) }) {
                 Icon(Icons.Default.Share, contentDescription = stringResource(R.string.share_page), tint = Color.White)
             }
+            TextButton(onClick = { onAnnotate(pages[pagerState.currentPage].id) }, enabled = !busy) {
+                Text(stringResource(R.string.annotate), color = Color.White)
+            }
             TextButton(onClick = { onAdjustCrop(pages[pagerState.currentPage].id) }) {
                 Text(stringResource(R.string.adjust_crop), color = Color.White)
             }
         }
 
         val current = pages[pagerState.currentPage]
-        val busy = renderingPageId != null || bulkProgress != null
         if (bulkProgress != null) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -414,7 +423,7 @@ private fun PageFilter.labelRes(): Int = when (this) {
 }
 
 @Composable
-private fun ZoomablePage(page: Page, onZoomChanged: (Boolean) -> Unit) {
+private fun ZoomablePage(page: Page, annotations: List<PageAnnotation>, onZoomChanged: (Boolean) -> Unit) {
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     var size by remember { mutableStateOf(IntSize.Zero) }
@@ -438,10 +447,12 @@ private fun ZoomablePage(page: Page, onZoomChanged: (Boolean) -> Unit) {
         update(newScale, pivot - (pivot - offset) * factor + panChange)
     }
 
-    AsyncImage(
-        model = page.displayFile,
+    // Annotations share the image's layer, so zoom moves them together and
+    // highlights blend with the scan.
+    AnnotatedPageImage(
+        image = page.displayFile,
+        annotations = annotations,
         contentDescription = stringResource(R.string.page_number, page.position + 1),
-        contentScale = ContentScale.Fit,
         modifier = Modifier
             .fillMaxSize()
             .onSizeChanged { size = it }

@@ -7,12 +7,15 @@ import app.nolva.data.CornerDetection
 import app.nolva.data.Corners
 import app.nolva.data.NormalizedPoint
 import app.nolva.data.Page
+import app.nolva.data.PageAnnotation
+import app.nolva.data.PageAnnotator
 import app.nolva.data.PageCropper
 import app.nolva.data.PageFilter
 import app.nolva.data.PageRendering
 import app.nolva.data.PageText
 import app.nolva.data.PageTextStore
 import app.nolva.data.RecognizedLine
+import app.nolva.data.Signature
 import app.nolva.data.TextMatch
 import java.io.File
 import java.time.Instant
@@ -93,6 +96,19 @@ class PageViewerViewModelTest {
         }
     }
 
+    /** Annotations per page, as the core stores them. */
+    private class FakeAnnotator(val stored: MutableMap<String, List<PageAnnotation>> = mutableMapOf()) :
+        PageAnnotator {
+        override suspend fun getAnnotations(pageId: String): List<PageAnnotation> = stored[pageId].orEmpty()
+        override suspend fun setAnnotations(pageId: String, annotations: List<PageAnnotation>) {
+            stored[pageId] = annotations
+        }
+        override suspend fun listSignatures(): List<Signature> = emptyList()
+        override suspend fun saveSignature(strokes: List<List<NormalizedPoint>>, aspectRatio: Float): Signature =
+            error("unused")
+        override suspend fun deleteSignature(signatureId: String) = error("unused")
+    }
+
     private class FakeTextStore(private val texts: Map<String, PageText> = emptyMap()) : PageTextStore {
         override suspend fun pagesNeedingText(limit: Int): List<Page> = emptyList()
         override suspend fun savePageText(pageId: String, image: File, lines: List<RecognizedLine>): PageText =
@@ -110,12 +126,14 @@ class PageViewerViewModelTest {
         failure: Exception? = null,
         texts: Map<String, PageText> = emptyMap(),
         repository: FakeRepository = FakeRepository(pages, failure),
+        annotator: FakeAnnotator = FakeAnnotator(),
     ) = PageViewerViewModel(
         documentId = "doc",
         title = "Factura 3/2026",
         repository = repository.also { cropper.pages.putAll(pages.associateBy { it.id }) },
         cropper = cropper,
         textStore = FakeTextStore(texts),
+        annotator = annotator,
         exportDir = tempFolder.root.resolve("exports"),
         ioDispatcher = dispatcher,
     )
@@ -400,6 +418,24 @@ class PageViewerViewModelTest {
         assertFalse(viewModel.uiState.value.canUndo)
         // 35 turns, 30 undone: 5 quarter turns remain.
         assertEquals(90, viewModel.uiState.value.pages.single().rotationDegrees)
+    }
+
+    @Test
+    fun `shows annotations and reloads them after a turn`() = runTest(dispatcher) {
+        val note = PageAnnotation.Text("Ok", 0.1f, 0.1f, 0.03f, 0)
+        val annotator = FakeAnnotator(mutableMapOf("p1" to listOf(note)))
+        val viewModel = viewModel(listOf(page("p0", 0), page("p1", 1)), annotator = annotator)
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertEquals(mapOf("p0" to emptyList(), "p1" to listOf(note)), viewModel.uiState.value.annotations)
+
+        // The core turns annotations with the page; the viewer picks that up.
+        val turned = note.copy(x = 0.9f)
+        annotator.stored["p1"] = listOf(turned)
+        viewModel.rotate("p1", clockwise = true)
+        advanceUntilIdle()
+        assertEquals(listOf(turned), viewModel.uiState.value.annotations["p1"])
     }
 
     @Test

@@ -16,6 +16,7 @@ import app.nolva.data.ExportPreferences
 import app.nolva.data.ListPreferences
 import app.nolva.data.SharedExportPreferences
 import app.nolva.data.DocxExporter
+import app.nolva.data.PageAnnotator
 import app.nolva.data.PageCropper
 import app.nolva.data.PageImporter
 import app.nolva.data.PdfExporter
@@ -96,6 +97,8 @@ class AppContainer(context: Context) {
     val captureDir: File get() = File(appContext.cacheDir, "captures")
 
     val pageTextStore: PageTextStore get() = coreRepository
+
+    val pageAnnotator: PageAnnotator get() = coreRepository
 
     val textRecognitionRunner: TextRecognitionRunner by lazy {
         TextRecognitionRunner(store = coreRepository, recognizer = MlKitTextRecognizer(Dispatchers.IO))

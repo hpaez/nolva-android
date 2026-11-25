@@ -9,7 +9,9 @@ import app.nolva.core.NolvaCoreInterface
 import app.nolva.core.NolvaException
 import app.nolva.core.PageCorners
 import app.nolva.core.PageFilter as CorePageFilter
+import app.nolva.core.PageAnnotation as CoreAnnotation
 import app.nolva.core.PageInfo
+import app.nolva.core.SignatureInfo
 import app.nolva.core.PageTextInfo
 import app.nolva.core.RecognizedLine as CoreLine
 import app.nolva.core.TextSearchHit
@@ -180,6 +182,25 @@ class CoreDocumentRepositoryTest {
         override fun setPageFilter(pageId: String, filter: CorePageFilter): PageInfo {
             filteredWith = filter
             return pageInfo("doc-1").copy(processedPath = "/data/nolva/doc-1/filtered.jpg", filter = filter)
+        }
+
+        var annotations: List<CoreAnnotation> = emptyList()
+
+        override fun getPageAnnotations(pageId: String): List<CoreAnnotation> = annotations
+
+        override fun setPageAnnotations(pageId: String, annotations: List<CoreAnnotation>) {
+            this.annotations = annotations
+        }
+
+        val signatures = mutableListOf<SignatureInfo>()
+
+        override fun saveSignature(strokes: List<List<CorePoint>>, aspectRatio: Float): SignatureInfo =
+            SignatureInfo("sig-${signatures.size}", strokes, aspectRatio, createdAtMs = 1).also { signatures += it }
+
+        override fun listSignatures(): List<SignatureInfo> = signatures.toList()
+
+        override fun deleteSignature(signatureId: String) {
+            signatures.removeAll { it.id == signatureId }
         }
 
         var rotatedClockwise: Boolean? = null
@@ -435,6 +456,36 @@ class CoreDocumentRepositoryTest {
         val restored = repository.setRendering("page-0", rendering)
         assertEquals(Triple(coreCorners, CorePageFilter.GRAYSCALE, 270u), core.renderedWith)
         assertEquals(rendering, restored.rendering)
+    }
+
+    @Test
+    fun `maps annotations and signatures both ways`() = runTest(dispatcher) {
+        val core = FakeCore()
+        val repository = CoreDocumentRepository(dispatcher) { core }
+        val ink = PageAnnotation.Ink(
+            listOf(listOf(NormalizedPoint(0.1f, 0.2f), NormalizedPoint(0.3f, 0.4f))),
+            color = 0x1A4D8F,
+            width = 0.004f,
+        )
+        val annotations = listOf(
+            ink,
+            PageAnnotation.Highlight(0.1f, 0.2f, 0.9f, 0.25f, color = 0xFFEB3B),
+            PageAnnotation.Text("Visto bueno", 0.1f, 0.8f, 0.03f, color = 0xC62828),
+        )
+
+        repository.setAnnotations("page-0", annotations)
+
+        assertEquals(
+            CoreAnnotation.Ink(listOf(listOf(CorePoint(0.1f, 0.2f), CorePoint(0.3f, 0.4f))), 0x1A4D8Fu, 0.004f),
+            core.annotations[0],
+        )
+        assertEquals(annotations, repository.getAnnotations("page-0"))
+
+        val signature = repository.saveSignature(ink.strokes, aspectRatio = 3f)
+        assertEquals(Signature("sig-0", ink.strokes, 3f), signature)
+        assertEquals(listOf(signature), repository.listSignatures())
+        repository.deleteSignature(signature.id)
+        assertTrue(repository.listSignatures().isEmpty())
     }
 
     @Test
