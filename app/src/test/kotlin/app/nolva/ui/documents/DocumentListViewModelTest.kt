@@ -4,9 +4,13 @@ import app.nolva.data.Document
 import app.nolva.data.DocumentEditor
 import app.nolva.data.DocumentException
 import app.nolva.data.DocumentRepository
+import app.nolva.data.DocumentSort
 import app.nolva.data.DocumentTrash
 import app.nolva.data.Folder
 import app.nolva.data.FolderStore
+import app.nolva.data.ListLayout
+import app.nolva.data.ListPreferences
+import app.nolva.data.ListSettings
 import app.nolva.data.Page
 import app.nolva.data.PageText
 import app.nolva.data.PageTextStore
@@ -171,7 +175,112 @@ class DocumentListViewModelTest {
         trash: DocumentTrash = FakeTrash(repository),
         folderStore: FolderStore = FakeFolderStore(repository),
         folderId: String? = null,
-    ) = DocumentListViewModel(folderId, repository, editor, textStore, pdfImporter, trash, folderStore)
+        preferences: ListPreferences = FakePreferences(),
+    ) = DocumentListViewModel(folderId, repository, editor, textStore, pdfImporter, trash, folderStore, preferences)
+
+    private class FakePreferences(var settings: ListSettings = ListSettings()) : ListPreferences {
+        override suspend fun load(): ListSettings = settings
+        override suspend fun save(settings: ListSettings) {
+            this.settings = settings
+        }
+    }
+
+    private fun doc(id: String, title: String, updated: Long, created: Long = updated, pages: Int = 1, size: Long = 0) =
+        document(id, title).copy(
+            updatedAt = Instant.ofEpochMilli(updated),
+            createdAt = Instant.ofEpochMilli(created),
+            pageCount = pages,
+            sizeBytes = size,
+        )
+
+    @Test
+    fun `sorts by each order and remembers the choice`() = runTest(dispatcher) {
+        val repository = FakeRepository().apply {
+            documents += listOf(
+                doc("a", "Árbol", updated = 3, created = 1, pages = 2, size = 50),
+                doc("b", "boleta", updated = 2, created = 3, pages = 9, size = 10),
+                doc("c", "Contrato", updated = 1, created = 2, pages = 1, size = 900),
+            )
+        }
+        val preferences = FakePreferences(ListSettings(sort = DocumentSort.Name))
+        val viewModel = viewModel(repository, preferences = preferences)
+        viewModel.refresh()
+        advanceUntilIdle()
+        val order = { viewModel.uiState.value.visibleDocuments.map { it.id } }
+
+        assertEquals(listOf("a", "b", "c"), order())
+        val expected = mapOf(
+            DocumentSort.Updated to listOf("a", "b", "c"),
+            DocumentSort.Created to listOf("b", "c", "a"),
+            DocumentSort.Size to listOf("c", "a", "b"),
+            DocumentSort.Pages to listOf("b", "a", "c"),
+        )
+        for ((sort, ids) in expected) {
+            viewModel.setSort(sort)
+            assertEquals(sort.name, ids, order())
+        }
+        viewModel.setLayout(ListLayout.Grid)
+        advanceUntilIdle()
+        assertEquals(ListSettings(DocumentSort.Pages, ListLayout.Grid), preferences.settings)
+    }
+
+    @Test
+    fun `selects documents and acts on them together`() = runTest(dispatcher) {
+        val repository = FakeRepository().apply {
+            documents += listOf(doc("a", "A", 3), doc("b", "B", 2), doc("c", "C", 1).copy(folderId = "f0"))
+        }
+        val folders = FakeFolderStore(repository).apply {
+            folders += Folder("f0", "Cuentas", Instant.EPOCH, Instant.EPOCH, 1)
+        }
+        val trash = FakeTrash(repository)
+        val viewModel = viewModel(repository, trash = trash, folderStore = folders)
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        viewModel.toggleSelection("a")
+        viewModel.toggleSelection("b")
+        viewModel.toggleSelection("a")
+        assertEquals(setOf("b"), viewModel.uiState.value.selectedIds)
+        viewModel.selectAll()
+        assertEquals("only what's on screen", setOf("a", "b"), viewModel.uiState.value.selectedIds)
+
+        viewModel.moveSelected("f0")
+        advanceUntilIdle()
+        var state = viewModel.uiState.value
+        assertEquals(emptySet<String>(), state.selectedIds)
+        assertEquals(emptyList<Document>(), state.visibleDocuments)
+        assertEquals(3, state.folders.single().documentCount)
+
+        val inside = viewModel(repository, trash = trash, folderStore = folders, folderId = "f0")
+        inside.refresh()
+        advanceUntilIdle()
+        inside.selectAll()
+        inside.deleteSelected()
+        advanceUntilIdle()
+        state = inside.uiState.value
+        assertEquals(3, state.trashedDocuments.size)
+        assertEquals(emptyList<Document>(), state.visibleDocuments)
+
+        inside.undoTrash()
+        advanceUntilIdle()
+        assertEquals(listOf("a", "b", "c"), inside.uiState.value.visibleDocuments.map { it.id })
+    }
+
+    @Test
+    fun `new folders from a bulk move take every selected document`() = runTest(dispatcher) {
+        val repository = FakeRepository().apply { documents += listOf(doc("a", "A", 2), doc("b", "B", 1)) }
+        val viewModel = viewModel(repository)
+        viewModel.refresh()
+        advanceUntilIdle()
+        viewModel.selectAll()
+
+        viewModel.createFolder("Nueva", thenMove = viewModel.uiState.value.selectedIds.toList())
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(listOf("f0", "f0"), state.documents.map { it.folderId })
+        assertEquals(emptySet<String>(), state.selectedIds)
+    }
 
     @Test
     fun `the top level shows folders and loose documents, a folder only its own`() = runTest(dispatcher) {
@@ -208,7 +317,7 @@ class DocumentListViewModelTest {
         viewModel.refresh()
         advanceUntilIdle()
 
-        viewModel.createFolder("Cuentas", thenMove = "a")
+        viewModel.createFolder("Cuentas", thenMove = listOf("a"))
         advanceUntilIdle()
 
         var state = viewModel.uiState.value
@@ -408,13 +517,14 @@ class DocumentListViewModelTest {
 
         assertEquals(listOf("Older"), viewModel.uiState.value.documents.map { it.title })
         assertEquals(listOf("b"), trash.trashed.map { it.id })
-        assertEquals("b", viewModel.uiState.value.trashedDocument?.id)
+        assertEquals(listOf("b"), viewModel.uiState.value.trashedDocuments.map { it.id })
 
         viewModel.undoTrash()
-        assertEquals(null, viewModel.uiState.value.trashedDocument)
+        assertEquals(emptyList<Document>(), viewModel.uiState.value.trashedDocuments)
         advanceUntilIdle()
 
-        assertEquals(listOf("Newer", "Older"), viewModel.uiState.value.documents.map { it.title })
+        // Back in its place in the list as shown (sorted by last edit).
+        assertEquals(listOf("Newer", "Older"), viewModel.uiState.value.visibleDocuments.map { it.title })
         assertEquals(emptyList<Document>(), trash.trashed)
     }
 

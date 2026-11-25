@@ -12,11 +12,13 @@ import app.nolva.data.DocumentEditor
 import app.nolva.data.DocumentRepository
 import app.nolva.data.DocumentTrash
 import app.nolva.data.FolderStore
+import app.nolva.data.ListPreferences
 import app.nolva.data.DocxExporter
 import app.nolva.data.PageCropper
 import app.nolva.data.PageImporter
 import app.nolva.data.PdfExporter
 import app.nolva.data.PdfImporter
+import app.nolva.data.SharedListPreferences
 import app.nolva.data.SheetDetector
 import app.nolva.data.MlKitTextRecognizer
 import app.nolva.data.PageTextStore
@@ -57,6 +59,8 @@ class AppContainer(context: Context) {
     val documentTrash: DocumentTrash get() = coreRepository
 
     val folderStore: FolderStore get() = coreRepository
+
+    val listPreferences: ListPreferences by lazy { SharedListPreferences(appContext, Dispatchers.IO) }
 
     val pdfImporter: PdfImporter by lazy {
         ContentPdfImporter(

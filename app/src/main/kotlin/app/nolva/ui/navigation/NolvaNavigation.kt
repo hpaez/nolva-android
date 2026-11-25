@@ -188,6 +188,7 @@ private fun documentListFactory(container: AppContainer, folderId: String?) = vi
             pdfImporter = container.pdfImporter,
             trash = container.documentTrash,
             folderStore = container.folderStore,
+            preferences = container.listPreferences,
         )
     }
 }

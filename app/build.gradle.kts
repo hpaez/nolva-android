@@ -20,6 +20,14 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
+
+        ndk {
+            // Only the ABIs nolva-core is built for (see its build-android.sh).
+            // Without this, an x86 device would install the app and crash
+            // for lack of libnolva_core.so, and JNA would ship libraries for
+            // long-dead ABIs (armeabi, mips, mips64) that bloat the APK.
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+        }
     }
 
     buildTypes {

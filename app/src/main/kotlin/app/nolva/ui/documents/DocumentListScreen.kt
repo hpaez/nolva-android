@@ -1,21 +1,29 @@
 package app.nolva.ui.documents
 
 import android.content.res.Configuration
+import android.text.format.Formatter
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -25,7 +33,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
@@ -51,6 +62,7 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -61,12 +73,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -76,7 +92,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.nolva.R
 import app.nolva.data.Document
+import app.nolva.data.DocumentSort
 import app.nolva.data.Folder
+import app.nolva.data.ListLayout
 import app.nolva.data.MAX_TITLE_LENGTH
 import app.nolva.data.PdfImportProgress
 import app.nolva.data.TextMatch
@@ -132,6 +150,13 @@ fun DocumentListRoute(
         onRenameFolder = viewModel::renameFolder,
         onDeleteFolder = viewModel::deleteFolder,
         onMoveDocument = viewModel::moveDocument,
+        onToggleSelection = viewModel::toggleSelection,
+        onSelectAll = viewModel::selectAll,
+        onClearSelection = viewModel::clearSelection,
+        onMoveSelected = viewModel::moveSelected,
+        onDeleteSelected = viewModel::deleteSelected,
+        onSort = viewModel::setSort,
+        onLayout = viewModel::setLayout,
         modifier = modifier,
     )
 }
@@ -155,26 +180,43 @@ fun DocumentListScreen(
     folderName: String? = null,
     onBack: (() -> Unit)? = null,
     onOpenFolder: (Folder) -> Unit = {},
-    onCreateFolder: (name: String, thenMove: String?) -> Unit = { _, _ -> },
+    onCreateFolder: (name: String, thenMove: List<String>) -> Unit = { _, _ -> },
     onRenameFolder: (folderId: String, name: String) -> Unit = { _, _ -> },
     onDeleteFolder: (folderId: String) -> Unit = {},
     onMoveDocument: (documentId: String, folderId: String?) -> Unit = { _, _ -> },
+    onToggleSelection: (documentId: String) -> Unit = {},
+    onSelectAll: () -> Unit = {},
+    onClearSelection: () -> Unit = {},
+    onMoveSelected: (folderId: String?) -> Unit = {},
+    onDeleteSelected: () -> Unit = {},
+    onSort: (DocumentSort) -> Unit = {},
+    onLayout: (ListLayout) -> Unit = {},
 ) {
     var showCreateDialog by rememberSaveable { mutableStateOf(false) }
     // Ids rather than documents so the dialogs survive configuration changes.
     var renamingId by rememberSaveable { mutableStateOf<String?>(null) }
     var movingId by rememberSaveable { mutableStateOf<String?>(null) }
     var showNewFolder by rememberSaveable { mutableStateOf(false) }
-    /** Document to move into the folder being created, if it was started from the move dialog. */
-    var newFolderFor by rememberSaveable { mutableStateOf<String?>(null) }
+    /** Documents to move into the folder being created, if it was started from a move dialog. */
+    var newFolderFor by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
+    var movingSelection by rememberSaveable { mutableStateOf(false) }
+    var showSort by rememberSaveable { mutableStateOf(false) }
+
+    // While selecting, Back ends the selection instead of leaving the screen.
+    BackHandler(enabled = uiState.isSelecting, onBack = onClearSelection)
     var renamingFolderId by rememberSaveable { mutableStateOf<String?>(null) }
     var deletingFolderId by rememberSaveable { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Deleting is undoable, so it needs no confirmation: the notice offers "Undo".
-    val trashedText = uiState.trashedDocument?.let { stringResource(R.string.moved_to_trash, it.title) }
+    val trashed = uiState.trashedDocuments
+    val trashedText = when (trashed.size) {
+        0 -> null
+        1 -> stringResource(R.string.moved_to_trash, trashed.single().title)
+        else -> pluralStringResource(R.plurals.moved_to_trash_many, trashed.size, trashed.size)
+    }
     val undoLabel = stringResource(R.string.undo)
-    LaunchedEffect(uiState.trashedDocument) {
+    LaunchedEffect(trashed) {
         if (trashedText != null) {
             val result = snackbarHostState.showSnackbar(
                 message = trashedText,
@@ -199,7 +241,15 @@ fun DocumentListScreen(
         modifier = modifier.fillMaxSize(),
         topBar = {
             Column {
-                TopAppBar(
+                if (uiState.isSelecting) {
+                    SelectionBar(
+                        count = uiState.selectedIds.size,
+                        onClose = onClearSelection,
+                        onMove = { movingSelection = true },
+                        onDelete = onDeleteSelected,
+                        onSelectAll = onSelectAll,
+                    )
+                } else TopAppBar(
                     title = {
                         if (folderName == null) {
                             Text(
@@ -224,9 +274,14 @@ fun DocumentListScreen(
                         }
                         ListMenu(
                             showNewFolder = uiState.folderId == null,
+                            layout = uiState.settings.layout,
                             onNewFolder = {
-                                newFolderFor = null
+                                newFolderFor = emptyList()
                                 showNewFolder = true
+                            },
+                            onSort = { showSort = true },
+                            onToggleLayout = {
+                                onLayout(if (uiState.settings.layout == ListLayout.List) ListLayout.Grid else ListLayout.List)
                             },
                             onOpenTrash = onOpenTrash,
                         )
@@ -238,7 +293,7 @@ fun DocumentListScreen(
             }
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
+            if (!uiState.isSelecting) ExtendedFloatingActionButton(
                 onClick = { showCreateDialog = true },
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
@@ -287,19 +342,25 @@ fun DocumentListScreen(
                     NoResults(uiState.query)
                 } else {
                     DocumentList(
+                        layout = uiState.settings.layout,
+                        sort = uiState.settings.sort,
                         folders = uiState.visibleFolders,
-                        onOpenFolder = onOpenFolder,
-                        onRenameFolder = { renamingFolderId = it.id },
-                        onDeleteFolder = { deletingFolderId = it.id },
-                        onMove = { movingId = it.id },
                         documents = uiState.visibleDocuments,
                         // Only while searching; stale matches never show on the full list.
                         matches = if (uiState.query.isBlank()) emptyMap() else uiState.contentMatches,
+                        selectedIds = uiState.selectedIds,
                         contentPadding = PaddingValues(bottom = innerPadding.calculateBottomPadding()),
-                        onOpenDocument = onOpenDocument,
-                        onRename = { renamingId = it.id },
-                        onDuplicate = { onDuplicateDocument(it.id, copyTitle(it.title)) },
-                        onDelete = { onDeleteDocument(it.id) },
+                        actions = DocumentActions(
+                            onOpenFolder = onOpenFolder,
+                            onRenameFolder = { renamingFolderId = it.id },
+                            onDeleteFolder = { deletingFolderId = it.id },
+                            onOpen = onOpenDocument,
+                            onToggleSelection = { onToggleSelection(it.id) },
+                            onRename = { renamingId = it.id },
+                            onMove = { movingId = it.id },
+                            onDuplicate = { onDuplicateDocument(it.id, copyTitle(it.title)) },
+                            onDelete = { onDeleteDocument(it.id) },
+                        ),
                     )
                 }
             }
@@ -321,7 +382,8 @@ fun DocumentListScreen(
 
     uiState.documents.find { it.id == movingId }?.let { document ->
         MoveDialog(
-            document = document,
+            title = stringResource(R.string.move_to_folder),
+            current = FolderChoice.of(document),
             folders = uiState.folders,
             onMove = { folderId ->
                 movingId = null
@@ -329,10 +391,40 @@ fun DocumentListScreen(
             },
             onNewFolder = {
                 movingId = null
-                newFolderFor = document.id
+                newFolderFor = listOf(document.id)
                 showNewFolder = true
             },
             onDismiss = { movingId = null },
+        )
+    }
+
+    if (movingSelection && uiState.isSelecting) {
+        val count = uiState.selectedIds.size
+        MoveDialog(
+            title = pluralStringResource(R.plurals.move_selected, count, count),
+            current = null,
+            folders = uiState.folders,
+            onMove = { folderId ->
+                movingSelection = false
+                onMoveSelected(folderId)
+            },
+            onNewFolder = {
+                movingSelection = false
+                newFolderFor = uiState.selectedIds.toList()
+                showNewFolder = true
+            },
+            onDismiss = { movingSelection = false },
+        )
+    }
+
+    if (showSort) {
+        SortDialog(
+            current = uiState.settings.sort,
+            onPick = { sort ->
+                showSort = false
+                onSort(sort)
+            },
+            onDismiss = { showSort = false },
         )
     }
 
@@ -344,11 +436,11 @@ fun DocumentListScreen(
             onConfirm = { name ->
                 showNewFolder = false
                 onCreateFolder(name, newFolderFor)
-                newFolderFor = null
+                newFolderFor = emptyList()
             },
             onDismiss = {
                 showNewFolder = false
-                newFolderFor = null
+                newFolderFor = emptyList()
             },
         )
     }
@@ -401,59 +493,77 @@ fun DocumentListScreen(
     }
 }
 
+/** Folders, then documents, as a list or a grid. */
 @Composable
 private fun DocumentList(
+    layout: ListLayout,
+    sort: DocumentSort,
     folders: List<Folder>,
-    onOpenFolder: (Folder) -> Unit,
-    onRenameFolder: (Folder) -> Unit,
-    onDeleteFolder: (Folder) -> Unit,
-    onMove: (Document) -> Unit,
     documents: List<Document>,
     matches: Map<String, TextMatch>,
+    selectedIds: Set<String>,
     contentPadding: PaddingValues,
-    onOpenDocument: (Document) -> Unit,
-    onRename: (Document) -> Unit,
-    onDuplicate: (Document) -> Unit,
-    onDelete: (Document) -> Unit,
+    actions: DocumentActions,
 ) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(
-            start = 16.dp,
-            end = 16.dp,
-            top = contentPadding.calculateTopPadding() + 8.dp,
-            // Leave room so the FAB never covers the last item.
-            bottom = contentPadding.calculateBottomPadding() + 88.dp,
-        ),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        items(folders, key = { "folder-${it.id}" }) { folder ->
-            FolderRow(
-                folder = folder,
-                onClick = { onOpenFolder(folder) },
-                onRename = { onRenameFolder(folder) },
-                onDelete = { onDeleteFolder(folder) },
-            )
+    val selecting = selectedIds.isNotEmpty()
+    val padding = PaddingValues(
+        start = 16.dp,
+        end = 16.dp,
+        top = contentPadding.calculateTopPadding() + 8.dp,
+        // Leave room so the FAB never covers the last item.
+        bottom = contentPadding.calculateBottomPadding() + 88.dp,
+    )
+    val spacing = Arrangement.spacedBy(12.dp)
+    when (layout) {
+        ListLayout.List -> LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = padding,
+            verticalArrangement = spacing,
+        ) {
+            items(folders, key = { "folder-${it.id}" }) { folder ->
+                FolderRow(folder, enabled = !selecting, actions = actions)
+            }
+            items(documents, key = { it.id }) { document ->
+                DocumentRow(document, matches[document.id], sort, document.id in selectedIds, selecting, actions)
+            }
         }
-        items(documents, key = { it.id }) { document ->
-            DocumentRow(
-                document = document,
-                match = matches[document.id],
-                onClick = { onOpenDocument(document) },
-                onRename = { onRename(document) },
-                onMove = { onMove(document) },
-                onDuplicate = { onDuplicate(document) },
-                onDelete = { onDelete(document) },
-            )
+
+        ListLayout.Grid -> LazyVerticalGrid(
+            columns = GridCells.Adaptive(minSize = 150.dp),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = padding,
+            verticalArrangement = spacing,
+            horizontalArrangement = spacing,
+        ) {
+            items(folders, key = { "folder-${it.id}" }) { folder ->
+                FolderRow(folder, enabled = !selecting, actions = actions)
+            }
+            items(documents, key = { it.id }) { document ->
+                DocumentTile(document, matches[document.id], sort, document.id in selectedIds, selecting, actions)
+            }
         }
     }
 }
 
-/** A folder, tinted so it stands apart from the documents below it. */
+/** What can be done to the folders and documents on screen. */
+private class DocumentActions(
+    val onOpenFolder: (Folder) -> Unit,
+    val onRenameFolder: (Folder) -> Unit,
+    val onDeleteFolder: (Folder) -> Unit,
+    val onOpen: (Document) -> Unit,
+    val onToggleSelection: (Document) -> Unit,
+    val onRename: (Document) -> Unit,
+    val onMove: (Document) -> Unit,
+    val onDuplicate: (Document) -> Unit,
+    val onDelete: (Document) -> Unit,
+)
+
+/** A folder, tinted so it stands apart from the documents. Disabled while selecting documents. */
 @Composable
-private fun FolderRow(folder: Folder, onClick: () -> Unit, onRename: () -> Unit, onDelete: () -> Unit) {
+private fun FolderRow(folder: Folder, enabled: Boolean, actions: DocumentActions) {
     Card(
-        onClick = onClick,
+        onClick = { actions.onOpenFolder(folder) },
+        enabled = enabled,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -476,65 +586,132 @@ private fun FolderRow(folder: Folder, onClick: () -> Unit, onRename: () -> Unit,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
             }
-            Box {
-                var expanded by remember { mutableStateOf(false) }
-                IconButton(onClick = { expanded = true }) {
-                    Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.more_options))
-                }
-                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.rename)) },
-                        onClick = {
-                            expanded = false
-                            onRename()
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) },
-                        onClick = {
-                            expanded = false
-                            onDelete()
-                        },
-                    )
+            if (enabled) {
+                Box {
+                    var expanded by remember { mutableStateOf(false) }
+                    IconButton(onClick = { expanded = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.more_options))
+                    }
+                    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.rename)) },
+                            onClick = {
+                                expanded = false
+                                actions.onRenameFolder(folder)
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) },
+                            onClick = {
+                                expanded = false
+                                actions.onDeleteFolder(folder)
+                            },
+                        )
+                    }
                 }
             }
         }
     }
 }
 
+/** Top bar while documents are selected: count, close, and the bulk actions. */
+@Composable
+private fun SelectionBar(
+    count: Int,
+    onClose: () -> Unit,
+    onMove: () -> Unit,
+    onDelete: () -> Unit,
+    onSelectAll: () -> Unit,
+) {
+    TopAppBar(
+        title = { Text(pluralStringResource(R.plurals.selected_count, count, count)) },
+        navigationIcon = {
+            IconButton(onClick = onClose) {
+                Icon(Icons.Default.Close, contentDescription = stringResource(R.string.clear_selection))
+            }
+        },
+        actions = {
+            TextButton(onClick = onSelectAll) { Text(stringResource(R.string.select_all)) }
+            TextButton(onClick = onMove) { Text(stringResource(R.string.move)) }
+            IconButton(onClick = onDelete) {
+                Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.delete))
+            }
+        },
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+    )
+}
+
 /** Overflow menu of the top bar. */
 @Composable
-private fun ListMenu(showNewFolder: Boolean, onNewFolder: () -> Unit, onOpenTrash: () -> Unit) {
+private fun ListMenu(
+    showNewFolder: Boolean,
+    layout: ListLayout,
+    onNewFolder: () -> Unit,
+    onSort: () -> Unit,
+    onToggleLayout: () -> Unit,
+    onOpenTrash: () -> Unit,
+) {
     var expanded by remember { mutableStateOf(false) }
+    fun pick(action: () -> Unit) {
+        expanded = false
+        action()
+    }
     Box {
         IconButton(onClick = { expanded = true }) {
             Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.more_options))
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             if (showNewFolder) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.new_folder)) },
-                    onClick = {
-                        expanded = false
-                        onNewFolder()
-                    },
-                )
+                DropdownMenuItem(text = { Text(stringResource(R.string.new_folder)) }, onClick = { pick(onNewFolder) })
             }
+            DropdownMenuItem(text = { Text(stringResource(R.string.sort_by)) }, onClick = { pick(onSort) })
             DropdownMenuItem(
-                text = { Text(stringResource(R.string.trash)) },
-                onClick = {
-                    expanded = false
-                    onOpenTrash()
+                text = {
+                    Text(stringResource(if (layout == ListLayout.List) R.string.view_as_grid else R.string.view_as_list))
                 },
+                onClick = { pick(onToggleLayout) },
             )
+            DropdownMenuItem(text = { Text(stringResource(R.string.trash)) }, onClick = { pick(onOpenTrash) })
         }
     }
 }
 
-/** Where to move a document: the top level, a folder, or a new folder. */
+/** Picks the order of the documents. */
+@Composable
+private fun SortDialog(current: DocumentSort, onPick: (DocumentSort) -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.sort_by)) },
+        text = {
+            Column {
+                DocumentSort.entries.forEach { sort ->
+                    MoveOption(stringResource(sort.labelRes()), selected = sort == current) { onPick(sort) }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        },
+    )
+}
+
+private fun DocumentSort.labelRes(): Int = when (this) {
+    DocumentSort.Updated -> R.string.sort_updated
+    DocumentSort.Created -> R.string.sort_created
+    DocumentSort.Name -> R.string.sort_name
+    DocumentSort.Size -> R.string.sort_size
+    DocumentSort.Pages -> R.string.sort_pages
+}
+
+/**
+ * Where to move documents: the top level, a folder, or a new folder.
+ * [current] is marked when moving one document; `null` marks nothing.
+ */
 @Composable
 private fun MoveDialog(
-    document: Document,
+    title: String,
+    current: FolderChoice?,
     folders: List<Folder>,
     onMove: (folderId: String?) -> Unit,
     onNewFolder: () -> Unit,
@@ -542,12 +719,12 @@ private fun MoveDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.move_to_folder)) },
+        title = { Text(title) },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                MoveOption(stringResource(R.string.top_level), selected = document.folderId == null) { onMove(null) }
+                MoveOption(stringResource(R.string.top_level), selected = current == FolderChoice.TopLevel) { onMove(null) }
                 folders.forEach { folder ->
-                    MoveOption(folder.name, selected = folder.id == document.folderId) { onMove(folder.id) }
+                    MoveOption(folder.name, selected = current == FolderChoice.In(folder.id)) { onMove(folder.id) }
                 }
                 TextButton(onClick = onNewFolder) { Text(stringResource(R.string.new_folder_ellipsis)) }
             }
@@ -557,6 +734,17 @@ private fun MoveDialog(
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
         },
     )
+}
+
+/** Where a document currently is, for marking it in [MoveDialog]. */
+private sealed interface FolderChoice {
+    data object TopLevel : FolderChoice
+
+    data class In(val folderId: String) : FolderChoice
+
+    companion object {
+        fun of(document: Document): FolderChoice = document.folderId?.let(::In) ?: TopLevel
+    }
 }
 
 @Composable
@@ -574,43 +762,118 @@ private fun MoveOption(label: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
+/** A document in the list layout. */
 @Composable
 private fun DocumentRow(
     document: Document,
     match: TextMatch?,
-    onClick: () -> Unit,
-    onRename: () -> Unit,
-    onMove: () -> Unit,
-    onDuplicate: () -> Unit,
-    onDelete: () -> Unit,
+    sort: DocumentSort,
+    selected: Boolean,
+    selecting: Boolean,
+    actions: DocumentActions,
 ) {
-    OutlinedCard(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+    val shape = CardDefaults.outlinedShape
+    OutlinedCard(
+        shape = shape,
+        border = selectionBorder(selected),
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectableDocument(document, selected, selecting, actions, shape),
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Cover(document)
-            DocumentSummary(document, match, Modifier.weight(1f))
-            DocumentMenu(onRename = onRename, onMove = onMove, onDuplicate = onDuplicate, onDelete = onDelete)
+            Cover(
+                document,
+                selected,
+                Modifier
+                    .padding(start = 12.dp, top = 12.dp, bottom = 12.dp)
+                    .size(width = 48.dp, height = 64.dp),
+            )
+            DocumentSummary(document, match, sort, Modifier.weight(1f).padding(start = 12.dp, top = 16.dp, bottom = 16.dp))
+            if (!selecting) DocumentMenu(document, actions)
         }
     }
 }
 
-/** First page of the document, or an empty sheet while it has no pages. */
+/** A document in the grid layout: a large cover with the title under it. */
 @Composable
-private fun Cover(document: Document) {
-    Box(
+private fun DocumentTile(
+    document: Document,
+    match: TextMatch?,
+    sort: DocumentSort,
+    selected: Boolean,
+    selecting: Boolean,
+    actions: DocumentActions,
+) {
+    val shape = CardDefaults.outlinedShape
+    OutlinedCard(
+        shape = shape,
+        border = selectionBorder(selected),
         modifier = Modifier
-            .padding(start = 12.dp, top = 12.dp, bottom = 12.dp)
-            .size(width = 48.dp, height = 64.dp)
+            .fillMaxWidth()
+            .selectableDocument(document, selected, selecting, actions, shape),
+    ) {
+        Cover(
+            document,
+            selected,
+            Modifier
+                .padding(8.dp)
+                .fillMaxWidth()
+                .aspectRatio(3f / 4f),
+        )
+        Row(verticalAlignment = Alignment.Top) {
+            DocumentSummary(document, match, sort, Modifier.weight(1f).padding(start = 12.dp, bottom = 12.dp))
+            if (!selecting) DocumentMenu(document, actions)
+        }
+    }
+}
+
+/**
+ * Tap opens the document, or toggles it while selecting; long press starts
+ * (or extends) a selection.
+ */
+private fun Modifier.selectableDocument(
+    document: Document,
+    selected: Boolean,
+    selecting: Boolean,
+    actions: DocumentActions,
+    shape: Shape,
+): Modifier = semantics { this.selected = selected }
+    .clip(shape)
+    .combinedClickable(
+        onClick = { if (selecting) actions.onToggleSelection(document) else actions.onOpen(document) },
+        onLongClick = { actions.onToggleSelection(document) },
+    )
+
+@Composable
+private fun selectionBorder(selected: Boolean): BorderStroke =
+    if (selected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else CardDefaults.outlinedCardBorder()
+
+/** First page of the document, or an empty sheet while it has no pages; checked when selected. */
+@Composable
+private fun Cover(document: Document, selected: Boolean, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
             .clip(RoundedCornerShape(4.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant),
     ) {
         document.coverFile?.let { cover ->
-            // Coil downsamples to this small size; full pages never load here.
+            // Coil downsamples to the shown size; full pages never load here.
             AsyncImage(
                 model = cover,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
+        }
+        if (selected) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)),
+            ) {
+                Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
+            }
         }
     }
 }
@@ -676,62 +939,50 @@ private fun NoResults(query: String) {
 }
 
 @Composable
-private fun DocumentMenu(onRename: () -> Unit, onMove: () -> Unit, onDuplicate: () -> Unit, onDelete: () -> Unit) {
+private fun DocumentMenu(document: Document, actions: DocumentActions) {
     var expanded by remember { mutableStateOf(false) }
+    fun pick(action: (Document) -> Unit) {
+        expanded = false
+        action(document)
+    }
     Box {
         IconButton(onClick = { expanded = true }) {
             Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.more_options))
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.rename)) },
-                onClick = {
-                    expanded = false
-                    onRename()
-                },
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.move_to_folder)) },
-                onClick = {
-                    expanded = false
-                    onMove()
-                },
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.duplicate)) },
-                onClick = {
-                    expanded = false
-                    onDuplicate()
-                },
-            )
+            DropdownMenuItem(text = { Text(stringResource(R.string.rename)) }, onClick = { pick(actions.onRename) })
+            DropdownMenuItem(text = { Text(stringResource(R.string.move_to_folder)) }, onClick = { pick(actions.onMove) })
+            DropdownMenuItem(text = { Text(stringResource(R.string.duplicate)) }, onClick = { pick(actions.onDuplicate) })
+            DropdownMenuItem(text = { Text(stringResource(R.string.select)) }, onClick = { pick(actions.onToggleSelection) })
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) },
-                onClick = {
-                    expanded = false
-                    onDelete()
-                },
+                onClick = { pick(actions.onDelete) },
             )
         }
     }
 }
 
 @Composable
-private fun DocumentSummary(document: Document, match: TextMatch?, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier.padding(start = 12.dp, top = 16.dp, bottom = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
+private fun DocumentSummary(document: Document, match: TextMatch?, sort: DocumentSort, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
             text = document.title,
             style = MaterialTheme.typography.titleMedium,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
+        // The detail matches the order, so the list explains itself.
+        val detail = when (sort) {
+            DocumentSort.Size -> Formatter.formatShortFileSize(context, document.sizeBytes)
+            DocumentSort.Created -> formatDate(document.createdAt)
+            else -> formatDate(document.updatedAt)
+        }
         Text(
             text = stringResource(
                 R.string.document_subtitle,
                 pluralStringResource(R.plurals.page_count, document.pageCount, document.pageCount),
-                formatDate(document.updatedAt),
+                detail,
             ),
             style = MaterialTheme.typography.bodySmall,
             color = NolvaTheme.colors.inkMuted,
