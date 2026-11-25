@@ -11,6 +11,7 @@ import app.nolva.data.CoreSheetDetector
 import app.nolva.data.DocumentEditor
 import app.nolva.data.DocumentRepository
 import app.nolva.data.DocumentTrash
+import app.nolva.data.FolderStore
 import app.nolva.data.DocxExporter
 import app.nolva.data.PageCropper
 import app.nolva.data.PageImporter
@@ -54,6 +55,8 @@ class AppContainer(context: Context) {
     val docxExporter: DocxExporter get() = coreRepository
 
     val documentTrash: DocumentTrash get() = coreRepository
+
+    val folderStore: FolderStore get() = coreRepository
 
     val pdfImporter: PdfImporter by lazy {
         ContentPdfImporter(

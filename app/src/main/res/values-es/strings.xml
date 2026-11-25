@@ -42,6 +42,21 @@
     <string name="export">Exportar</string>
     <string name="import_pdf">Importar PDF</string>
     <string name="duplicate">Duplicar</string>
+    <string name="new_folder">Nueva carpeta</string>
+    <string name="new_folder_ellipsis">Nueva carpeta…</string>
+    <string name="rename_folder">Renombrar carpeta</string>
+    <string name="delete_folder_title">¿Eliminar «%1$s»?</string>
+    <string name="delete_folder_body">Sus documentos se conservan y vuelven a Inicio.</string>
+    <string name="folder_empty">Esta carpeta está vacía. Mueve documentos aquí desde su menú, o crea uno.</string>
+    <plurals name="folder_document_count">
+        <item quantity="one">%1$d documento</item>
+        <item quantity="many">%1$d documentos</item>
+        <item quantity="other">%1$d documentos</item>
+    </plurals>
+    <string name="move_to_folder">Mover a carpeta</string>
+    <string name="top_level">Inicio (sin carpeta)</string>
+    <string name="error_folder">No se pudo guardar la carpeta.</string>
+    <string name="error_move_document">No se pudo mover el documento.</string>
     <string name="copy_title">%1$s (copia)</string>
     <string name="moved_to_trash">«%1$s» se movió a la papelera</string>
     <string name="undo">Deshacer</string>

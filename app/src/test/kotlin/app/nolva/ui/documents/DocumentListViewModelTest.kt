@@ -5,6 +5,8 @@ import app.nolva.data.DocumentEditor
 import app.nolva.data.DocumentException
 import app.nolva.data.DocumentRepository
 import app.nolva.data.DocumentTrash
+import app.nolva.data.Folder
+import app.nolva.data.FolderStore
 import app.nolva.data.Page
 import app.nolva.data.PageText
 import app.nolva.data.PageTextStore
@@ -85,6 +87,42 @@ class DocumentListViewModelTest {
         override suspend fun movePage(pageId: String, toPosition: Int): List<Page> = error("unused")
     }
 
+    /** Folders kept in memory; moves update the repository's documents. */
+    private class FakeFolderStore(private val repository: FakeRepository) : FolderStore {
+        val folders = mutableListOf<Folder>()
+        var failure: Exception? = null
+
+        private fun counted(folder: Folder) =
+            folder.copy(documentCount = repository.documents.count { it.folderId == folder.id })
+
+        override suspend fun listFolders(): List<Folder> = folders.map(::counted)
+
+        override suspend fun createFolder(name: String): Folder {
+            failure?.let { throw it }
+            return Folder("f${folders.size}", name, Instant.EPOCH, Instant.EPOCH, 0).also { folders += it }
+        }
+
+        override suspend fun renameFolder(folderId: String, name: String): Folder {
+            failure?.let { throw it }
+            val index = folders.indexOfFirst { it.id == folderId }
+            return folders[index].copy(name = name).also { folders[index] = it }
+        }
+
+        override suspend fun deleteFolder(folderId: String) {
+            failure?.let { throw it }
+            folders.removeAll { it.id == folderId }
+        }
+
+        override suspend fun moveDocuments(documentIds: List<String>, folderId: String?): Int {
+            failure?.let { throw it }
+            repository.documents.replaceAll { if (it.id in documentIds) it.copy(folderId = folderId) else it }
+            return documentIds.size
+        }
+
+        override suspend fun createDocumentIn(title: String, folderId: String?): Document =
+            document("in-$folderId", title).copy(folderId = folderId).also { repository.documents.add(0, it) }
+    }
+
     /** Moves documents between the repository and its own trashed list. */
     private class FakeTrash(private val repository: FakeRepository) : DocumentTrash {
         var failure: Exception? = null
@@ -131,7 +169,111 @@ class DocumentListViewModelTest {
         textStore: PageTextStore = FakeTextStore(),
         pdfImporter: PdfImporter = PdfImporter { _, _ -> error("unused") },
         trash: DocumentTrash = FakeTrash(repository),
-    ) = DocumentListViewModel(repository, editor, textStore, pdfImporter, trash)
+        folderStore: FolderStore = FakeFolderStore(repository),
+        folderId: String? = null,
+    ) = DocumentListViewModel(folderId, repository, editor, textStore, pdfImporter, trash, folderStore)
+
+    @Test
+    fun `the top level shows folders and loose documents, a folder only its own`() = runTest(dispatcher) {
+        val repository = FakeRepository().apply {
+            documents += listOf(document("a", "Suelto"), document("b", "Luz").copy(folderId = "f0"))
+        }
+        val folders = FakeFolderStore(repository).apply {
+            folders += Folder("f0", "Cuentas", Instant.EPOCH, Instant.EPOCH, 0)
+        }
+        val top = viewModel(repository, folderStore = folders)
+        val inside = viewModel(repository, folderStore = folders, folderId = "f0")
+        top.refresh()
+        inside.refresh()
+        advanceUntilIdle()
+
+        assertEquals(listOf("a"), top.uiState.value.visibleDocuments.map { it.id })
+        assertEquals(listOf("Cuentas"), top.uiState.value.visibleFolders.map { it.name })
+        assertEquals(1, top.uiState.value.visibleFolders.single().documentCount)
+        assertEquals(listOf("b"), inside.uiState.value.visibleDocuments.map { it.id })
+        assertEquals(emptyList<Folder>(), inside.uiState.value.visibleFolders)
+
+        // Searching from the top level looks inside folders too; inside a folder, only there.
+        top.search("luz")
+        inside.search("suelto")
+        advanceUntilIdle()
+        assertEquals(listOf("b"), top.uiState.value.visibleDocuments.map { it.id })
+        assertEquals(emptyList<Document>(), inside.uiState.value.visibleDocuments)
+    }
+
+    @Test
+    fun `documents move between folders and counts follow`() = runTest(dispatcher) {
+        val repository = FakeRepository().apply { documents += document("a", "Luz") }
+        val viewModel = viewModel(repository)
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        viewModel.createFolder("Cuentas", thenMove = "a")
+        advanceUntilIdle()
+
+        var state = viewModel.uiState.value
+        assertEquals("f0", state.documents.single().folderId)
+        assertEquals(1, state.folders.single().documentCount)
+        assertEquals(emptyList<Document>(), state.visibleDocuments)
+
+        viewModel.moveDocument("a", null)
+        advanceUntilIdle()
+        state = viewModel.uiState.value
+        assertEquals(null, state.documents.single().folderId)
+        assertEquals(0, state.folders.single().documentCount)
+    }
+
+    @Test
+    fun `deleting a folder brings its documents back to the top level`() = runTest(dispatcher) {
+        val repository = FakeRepository().apply { documents += document("a", "Luz").copy(folderId = "f0") }
+        val folders = FakeFolderStore(repository).apply {
+            folders += Folder("f0", "Cuentas", Instant.EPOCH, Instant.EPOCH, 1)
+        }
+        val viewModel = viewModel(repository, folderStore = folders)
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        viewModel.renameFolder("f0", "Hogar")
+        advanceUntilIdle()
+        assertEquals("Hogar", viewModel.uiState.value.folders.single().name)
+
+        viewModel.deleteFolder("f0")
+        advanceUntilIdle()
+        val state = viewModel.uiState.value
+        assertEquals(emptyList<Folder>(), state.folders)
+        assertEquals(listOf("a"), state.visibleDocuments.map { it.id })
+    }
+
+    @Test
+    fun `documents created inside a folder stay there`() = runTest(dispatcher) {
+        val repository = FakeRepository()
+        val viewModel = viewModel(repository, folderId = "f0")
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        viewModel.createDocument("Agua")
+        advanceUntilIdle()
+
+        assertEquals(listOf("f0"), viewModel.uiState.value.visibleDocuments.map { it.folderId })
+    }
+
+    @Test
+    fun `folder failures report, and invalid names say so`() = runTest(dispatcher) {
+        val repository = FakeRepository()
+        val folders = FakeFolderStore(repository)
+        val viewModel = viewModel(repository, folderStore = folders)
+
+        folders.failure = DocumentException.InvalidInput("blank")
+        viewModel.createFolder("  ")
+        advanceUntilIdle()
+        assertEquals(DocumentListMessage.InvalidTitle, viewModel.uiState.value.message)
+
+        viewModel.messageShown()
+        folders.failure = DocumentException.Storage("disk")
+        viewModel.moveDocument("a", "f0")
+        advanceUntilIdle()
+        assertEquals(DocumentListMessage.MoveFailed, viewModel.uiState.value.message)
+    }
 
     @Test
     fun `imported pdfs show progress, join the list and open`() = runTest(dispatcher) {
