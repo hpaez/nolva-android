@@ -1,7 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.CAMERA" />
+    <!--
+      Nolva works entirely on the device, so it can't reach the network.
+      ML Kit adds INTERNET only to send usage telemetry to Google (device
+      model, app version, latencies; no images or text) and offers no switch
+      to turn it off; its bundled model works offline. Removing the
+      permission here wins over every library that declares it.
+      Revisit when the backend arrives (claude/modelo-de-amenazas.md, R1).
+    -->
+    <uses-permission
+        android:name="android.permission.INTERNET"
+        tools:node="remove" />
     <!-- Not required: devices without a camera can still import from the gallery. -->
     <uses-feature
         android:name="android.hardware.camera.any"

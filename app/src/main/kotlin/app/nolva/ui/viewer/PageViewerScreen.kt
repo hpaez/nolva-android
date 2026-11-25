@@ -1,6 +1,7 @@
 package app.nolva.ui.viewer
 
 import android.content.ClipData
+import android.os.PersistableBundle
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.animation.core.animateFloatAsState
@@ -206,7 +207,7 @@ private fun PageTextSheet(shown: ShownText, onDismiss: () -> Unit) {
                 Button(
                     onClick = {
                         scope.launch {
-                            clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(label, shown.text)))
+                            clipboard.setClipEntry(ClipEntry(sensitiveText(label, shown.text)))
                             onDismiss()
                         }
                     },
@@ -498,3 +499,15 @@ private fun ZoomablePage(page: Page, annotations: List<PageAnnotation>, onZoomCh
             },
     )
 }
+
+/**
+ * A plain-text clip marked sensitive: Android 13+ hides it from the
+ * clipboard preview, as it does for passwords. Older versions ignore it.
+ */
+private fun sensitiveText(label: String, text: String): ClipData =
+    ClipData.newPlainText(label, text).apply {
+        description.extras = PersistableBundle().apply { putBoolean(EXTRA_IS_SENSITIVE, true) }
+    }
+
+/** `ClipDescription.EXTRA_IS_SENSITIVE`, spelled out to use it below API 33. */
+private const val EXTRA_IS_SENSITIVE = "android.content.extra.IS_SENSITIVE"
