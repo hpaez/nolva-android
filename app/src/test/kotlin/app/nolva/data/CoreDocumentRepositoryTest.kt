@@ -366,6 +366,9 @@ class CoreDocumentRepositoryTest {
         assertEquals(false, core.exportedWith?.pageNumbers)
         repository.exportPdf("doc-1", File("/cache/exports/a.pdf"), PdfSettings(pageNumbers = true))
         assertEquals(true, core.exportedWith?.pageNumbers)
+        assertEquals(null, core.exportedWith?.password)
+        repository.exportPdf("doc-1", File("/cache/exports/a.pdf"), PdfSettings(password = "ñandú"))
+        assertEquals("ñandú", core.exportedWith?.password)
         assertEquals(PdfExport(File("/cache/exports/a.pdf"), pageCount = 2, sizeBytes = 1234), export)
     }
 

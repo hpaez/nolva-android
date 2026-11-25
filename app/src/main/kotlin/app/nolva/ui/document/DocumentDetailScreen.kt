@@ -108,6 +108,7 @@ fun DocumentDetailRoute(
         },
         onMessageShown = viewModel::messageShown,
         onExportPdf = { paperSize -> viewModel.exportPdf(title, paperSize) },
+        onExportProtectedPdf = { paperSize, password -> viewModel.exportPdf(title, paperSize, password) },
         onPageNumbersChange = viewModel::setPageNumbers,
         onExportDocx = { includeImages -> viewModel.exportDocx(title, includeImages) },
         onDeletePage = viewModel::deletePage,
@@ -128,12 +129,14 @@ fun DocumentDetailScreen(
     modifier: Modifier = Modifier,
     onOpenPage: (Int) -> Unit = {},
     onExportPdf: (PaperSize) -> Unit = {},
+    onExportProtectedPdf: (PaperSize, password: String) -> Unit = { _, _ -> },
     onPageNumbersChange: (Boolean) -> Unit = {},
     onExportDocx: (includeImages: Boolean) -> Unit = {},
     onDeletePage: (pageId: String) -> Unit = {},
     onMovePage: (pageId: String, toPosition: Int) -> Unit = { _, _ -> },
 ) {
     var showExportMenu by remember { mutableStateOf(false) }
+    var askingPassword by rememberSaveable { mutableStateOf(false) }
     var deletingPageId by rememberSaveable { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     val messageText = uiState.message?.let {
@@ -182,6 +185,13 @@ fun DocumentDetailScreen(
                                         },
                                     )
                                 }
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.export_pdf_password)) },
+                                    onClick = {
+                                        showExportMenu = false
+                                        askingPassword = true
+                                    },
+                                )
                                 // A setting, not an export: toggling keeps the menu open.
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.pdf_page_numbers)) },
@@ -246,6 +256,16 @@ fun DocumentDetailScreen(
                 onDeletePage = { deletingPageId = it },
             )
         }
+    }
+
+    if (askingPassword) {
+        PdfPasswordDialog(
+            onDismiss = { askingPassword = false },
+            onExport = { paperSize, password ->
+                askingPassword = false
+                onExportProtectedPdf(paperSize, password)
+            },
+        )
     }
 
     uiState.pages.find { it.id == deletingPageId }?.let { page ->
@@ -452,7 +472,7 @@ private fun DocumentDetailMessage.textRes(): Int = when (this) {
     DocumentDetailMessage.MovePageFailed -> R.string.error_move_page
 }
 
-private fun PaperSize.labelRes(): Int = when (this) {
+internal fun PaperSize.labelRes(): Int = when (this) {
     PaperSize.A4 -> R.string.paper_a4
     PaperSize.Letter -> R.string.paper_letter
     PaperSize.Legal -> R.string.paper_legal

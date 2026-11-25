@@ -202,4 +202,14 @@
     <string name="applying_to_pages">Aplicando… %1$d de %2$d</string>
     <string name="error_rotate_page">No se pudo girar la página.</string>
     <string name="error_restore_page">No se pudo restaurar la página. Inténtalo de nuevo.</string>
+    <string name="export_pdf_password">PDF con contraseña…</string>
+    <string name="pdf_password_title">PDF con contraseña</string>
+    <string name="pdf_password_body">Se pedirá al abrir el PDF. Nolva no la guarda: si se olvida, no se puede recuperar.</string>
+    <string name="pdf_password">Contraseña</string>
+    <string name="pdf_password_confirm">Repite la contraseña</string>
+    <string name="pdf_password_empty">Escribe una contraseña.</string>
+    <string name="pdf_password_too_long">La contraseña es demasiado larga.</string>
+    <string name="pdf_password_mismatch">Las contraseñas no coinciden.</string>
+    <string name="show_password">Mostrar</string>
+    <string name="hide_password">Ocultar</string>
 </resources>

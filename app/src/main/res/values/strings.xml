@@ -210,4 +210,14 @@
     <string name="applying_to_pages">Applying… %1$d of %2$d</string>
     <string name="error_rotate_page">Couldn\'t rotate the page.</string>
     <string name="error_restore_page">Couldn\'t restore the page. Try again.</string>
+    <string name="export_pdf_password">PDF with password…</string>
+    <string name="pdf_password_title">Password-protected PDF</string>
+    <string name="pdf_password_body">It will be asked for when opening the PDF. Nolva doesn\'t keep it: if it\'s forgotten, it can\'t be recovered.</string>
+    <string name="pdf_password">Password</string>
+    <string name="pdf_password_confirm">Repeat the password</string>
+    <string name="pdf_password_empty">Enter a password.</string>
+    <string name="pdf_password_too_long">That password is too long.</string>
+    <string name="pdf_password_mismatch">The passwords don\'t match.</string>
+    <string name="show_password">Show</string>
+    <string name="hide_password">Hide</string>
 </resources>

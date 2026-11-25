@@ -167,8 +167,12 @@ class DocumentDetailViewModel(
         }
     }
 
-    /** Exports the document as `<title>.pdf` and queues it for sharing. */
-    fun exportPdf(title: String, paperSize: PaperSize) {
+    /**
+     * Exports the document as `<title>.pdf` and queues it for sharing; with
+     * a [password], the PDF can only be opened with it. The password is used
+     * once and never stored.
+     */
+    fun exportPdf(title: String, paperSize: PaperSize, password: String? = null) {
         if (_uiState.value.isExporting) return
         _uiState.update { it.copy(isExporting = true) }
         viewModelScope.launch {
@@ -178,7 +182,7 @@ class DocumentDetailViewModel(
                     deleteOldExports()
                     File(exportDir, pdfFileName(title))
                 }
-                exporter.exportPdf(documentId, output, PdfSettings(paperSize, _uiState.value.pageNumbers))
+                exporter.exportPdf(documentId, output, PdfSettings(paperSize, _uiState.value.pageNumbers, password))
             }
             _uiState.update { state ->
                 result.fold(
