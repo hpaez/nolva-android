@@ -12,6 +12,8 @@ import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import app.nolva.di.AppContainer
+import app.nolva.ui.annotate.AnnotationEditorRoute
+import app.nolva.ui.annotate.AnnotationEditorViewModel
 import app.nolva.ui.capture.CaptureRoute
 import app.nolva.ui.capture.CaptureViewModel
 import app.nolva.ui.crop.CropRoute
@@ -48,6 +50,9 @@ data class PageViewerKey(val documentId: String, val title: String, val initialP
 
 @Serializable
 data class CropKey(val pageId: String) : NavKey
+
+@Serializable
+data class AnnotateKey(val pageId: String) : NavKey
 
 @Composable
 fun NolvaNavigation(container: AppContainer, modifier: Modifier = Modifier) {
@@ -133,6 +138,7 @@ fun NolvaNavigation(container: AppContainer, modifier: Modifier = Modifier) {
                                     repository = container.documentRepository,
                                     cropper = container.pageCropper,
                                     textStore = container.pageTextStore,
+                                    annotator = container.pageAnnotator,
                                     exportDir = container.exportDir,
                                     ioDispatcher = Dispatchers.IO,
                                 )
@@ -142,6 +148,19 @@ fun NolvaNavigation(container: AppContainer, modifier: Modifier = Modifier) {
                     initialPage = key.initialPage,
                     onClose = { backStack.removeLastOrNull() },
                     onAdjustCrop = { pageId -> backStack.add(CropKey(pageId)) },
+                    onAnnotate = { pageId -> backStack.add(AnnotateKey(pageId)) },
+                )
+            }
+            entry<AnnotateKey> { key ->
+                AnnotationEditorRoute(
+                    viewModel = viewModel(
+                        factory = viewModelFactory {
+                            initializer {
+                                AnnotationEditorViewModel(key.pageId, container.pageCropper, container.pageAnnotator)
+                            }
+                        },
+                    ),
+                    onDone = { backStack.removeLastOrNull() },
                 )
             }
             entry<CropKey> { key ->
