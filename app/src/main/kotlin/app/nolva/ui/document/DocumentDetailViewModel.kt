@@ -10,7 +10,9 @@ import app.nolva.data.PageImporter
 import app.nolva.data.PaperSize
 import app.nolva.data.DOCX_MIME_TYPE
 import app.nolva.data.DocxExporter
+import app.nolva.data.ExportPreferences
 import app.nolva.data.PdfExporter
+import app.nolva.data.PdfSettings
 import app.nolva.data.TextRecognitionRunner
 import app.nolva.data.docxFileName
 import app.nolva.data.pdfFileName
@@ -37,6 +39,8 @@ data class DocumentDetailUiState(
     val pendingShare: ExportedFile? = null,
     /** Pages the last Word export had no text for; shown with [DocumentDetailMessage.DocxMissingText]. */
     val pagesMissingText: Int = 0,
+    /** Whether PDFs are exported with page numbers; remembered between documents. */
+    val pageNumbers: Boolean = false,
 ) {
     val isImporting: Boolean get() = pendingImports > 0
 }
@@ -65,6 +69,7 @@ class DocumentDetailViewModel(
     private val exporter: PdfExporter,
     private val docxExporter: DocxExporter,
     private val textRecognition: TextRecognitionRunner,
+    private val exportPreferences: ExportPreferences,
     private val exportDir: File,
     private val ioDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
@@ -77,6 +82,20 @@ class DocumentDetailViewModel(
      * overlapping moves could otherwise apply their results out of order.
      */
     private val editMutex = Mutex()
+
+    init {
+        viewModelScope.launch {
+            // Unreadable preferences just mean the default: no numbers.
+            val enabled = runSuspendCatching { exportPreferences.pageNumbers() }.getOrDefault(false)
+            _uiState.update { it.copy(pageNumbers = enabled) }
+        }
+    }
+
+    /** Turns page numbers in exported PDFs on or off, for this and later documents. */
+    fun setPageNumbers(enabled: Boolean) {
+        _uiState.update { it.copy(pageNumbers = enabled) }
+        viewModelScope.launch { runSuspendCatching { exportPreferences.setPageNumbers(enabled) } }
+    }
 
     /** Reloads the pages, e.g. when coming back from the camera. */
     fun refresh() {
@@ -159,7 +178,7 @@ class DocumentDetailViewModel(
                     deleteOldExports()
                     File(exportDir, pdfFileName(title))
                 }
-                exporter.exportPdf(documentId, output, paperSize)
+                exporter.exportPdf(documentId, output, PdfSettings(paperSize, _uiState.value.pageNumbers))
             }
             _uiState.update { state ->
                 result.fold(

@@ -123,8 +123,12 @@ class CoreDocumentRepository(
         core.movePage(pageId, toPosition.coerceAtLeast(0).toUInt()).map { it.toPage() }
     }
 
-    override suspend fun exportPdf(documentId: String, output: File, paperSize: PaperSize): PdfExport = call {
-        val options = PdfOptions(paperSize = paperSize.toCore(), marginMm = 0f)
+    override suspend fun exportPdf(documentId: String, output: File, settings: PdfSettings): PdfExport = call {
+        val options = PdfOptions(
+            paperSize = settings.paperSize.toCore(),
+            marginMm = 0f,
+            pageNumbers = settings.pageNumbers,
+        )
         val info = core.exportPdf(documentId, output.absolutePath, options)
         PdfExport(output, info.pageCount.toInt(), info.sizeBytes.toLong())
     }

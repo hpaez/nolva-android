@@ -14,6 +14,13 @@ enum class PaperSize {
     FitImage,
 }
 
+/** How a PDF is laid out. Nothing is added to the scans unless asked. */
+data class PdfSettings(
+    val paperSize: PaperSize = PaperSize.A4,
+    /** Print "n / total" at the bottom of each page. */
+    val pageNumbers: Boolean = false,
+)
+
 data class PdfExport(val file: File, val pageCount: Int, val sizeBytes: Long)
 
 /** Exports documents as PDF files. Main-safe. */
@@ -24,7 +31,7 @@ fun interface PdfExporter {
      *
      * @throws DocumentException.InvalidInput if the document has no pages.
      */
-    suspend fun exportPdf(documentId: String, output: File, paperSize: PaperSize): PdfExport
+    suspend fun exportPdf(documentId: String, output: File, settings: PdfSettings): PdfExport
 }
 
 data class DocxExport(

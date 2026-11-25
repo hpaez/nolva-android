@@ -360,9 +360,12 @@ class CoreDocumentRepositoryTest {
         val core = FakeCore()
         val repository = CoreDocumentRepository(dispatcher) { core }
 
-        val export = repository.exportPdf("doc-1", File("/cache/exports/a.pdf"), PaperSize.Legal)
+        val export = repository.exportPdf("doc-1", File("/cache/exports/a.pdf"), PdfSettings(PaperSize.Legal))
 
         assertEquals(CorePaperSize.LEGAL, core.exportedWith?.paperSize)
+        assertEquals(false, core.exportedWith?.pageNumbers)
+        repository.exportPdf("doc-1", File("/cache/exports/a.pdf"), PdfSettings(pageNumbers = true))
+        assertEquals(true, core.exportedWith?.pageNumbers)
         assertEquals(PdfExport(File("/cache/exports/a.pdf"), pageCount = 2, sizeBytes = 1234), export)
     }
 

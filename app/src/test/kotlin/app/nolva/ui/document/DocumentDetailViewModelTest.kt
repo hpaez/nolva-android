@@ -13,7 +13,9 @@ import app.nolva.data.DocxExporter
 import app.nolva.data.PageText
 import app.nolva.data.PageTextStore
 import app.nolva.data.PdfExport
+import app.nolva.data.ExportPreferences
 import app.nolva.data.PdfExporter
+import app.nolva.data.PdfSettings
 import app.nolva.data.RecognizedLine
 import app.nolva.data.TextMatch
 import app.nolva.data.TextRecognitionRunner
@@ -31,6 +33,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -89,12 +92,12 @@ class DocumentDetailViewModelTest {
 
     /** Writes a tiny file where asked, like the core does. */
     private class FakeExporter(private val failure: Exception? = null) : PdfExporter {
-        val exported = mutableListOf<Pair<File, PaperSize>>()
+        val exported = mutableListOf<Pair<File, PdfSettings>>()
 
-        override suspend fun exportPdf(documentId: String, output: File, paperSize: PaperSize): PdfExport {
+        override suspend fun exportPdf(documentId: String, output: File, settings: PdfSettings): PdfExport {
             failure?.let { throw it }
             output.writeText("%PDF")
-            exported += output to paperSize
+            exported += output to settings
             return PdfExport(output, pageCount = 1, sizeBytes = 4)
         }
     }
@@ -134,6 +137,7 @@ class DocumentDetailViewModelTest {
         textStore: FakeTextStore = FakeTextStore(),
         recognizer: TextRecognizer = TextRecognizer { listOf(RecognizedLine(0, "x", TextRect(0f, 0f, 1f, 0.1f))) },
         docxExporter: DocxExporter = FakeDocxExporter(textStore),
+        exportPreferences: FakeExportPreferences = FakeExportPreferences(),
     ) = DocumentDetailViewModel(
         "doc",
         repository,
@@ -142,6 +146,7 @@ class DocumentDetailViewModelTest {
         exporter,
         docxExporter,
         TextRecognitionRunner(textStore, recognizer),
+        exportPreferences,
         tempFolder.root.resolve("exports"),
         dispatcher,
     )
@@ -247,11 +252,44 @@ class DocumentDetailViewModelTest {
 
         val share = viewModel.uiState.value.pendingShare!!
         assertEquals("Factura 3_2026.pdf", share.file.name)
-        assertEquals(PaperSize.Legal, exporter.exported.single().second)
+        assertEquals(PdfSettings(PaperSize.Legal, pageNumbers = false), exporter.exported.single().second)
         assertFalse(viewModel.uiState.value.isExporting)
 
         viewModel.shareHandled()
         assertEquals(null, viewModel.uiState.value.pendingShare)
+    }
+
+    private class FakeExportPreferences(var stored: Boolean = false) : ExportPreferences {
+        override suspend fun pageNumbers(): Boolean = stored
+        override suspend fun setPageNumbers(enabled: Boolean) {
+            stored = enabled
+        }
+    }
+
+    @Test
+    fun `page numbers are off by default, remembered and used in pdfs`() = runTest(dispatcher) {
+        val exporter = FakeExporter()
+        val prefs = FakeExportPreferences()
+        val viewModel = viewModel(
+            FakeRepository(listOf(page("a", 0))),
+            FakeImporter(),
+            exporter,
+            exportPreferences = prefs,
+        )
+        advanceUntilIdle()
+        assertFalse(viewModel.uiState.value.pageNumbers)
+
+        viewModel.setPageNumbers(true)
+        advanceUntilIdle()
+        assertTrue(prefs.stored)
+        viewModel.exportPdf("Recibo", PaperSize.FitImage)
+        advanceUntilIdle()
+        assertEquals(PdfSettings(PaperSize.FitImage, pageNumbers = true), exporter.exported.single().second)
+
+        // Another document starts with the remembered choice.
+        val next = viewModel(FakeRepository(), FakeImporter(), exportPreferences = prefs)
+        advanceUntilIdle()
+        assertTrue(next.uiState.value.pageNumbers)
     }
 
     @Test
