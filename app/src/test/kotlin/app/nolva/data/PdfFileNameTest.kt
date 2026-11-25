@@ -18,6 +18,12 @@ class PdfFileNameTest {
     }
 
     @Test
+    fun `direction overrides can't disguise the extension`() {
+        // Displayed right to left, "\u202Efdp.exe" would read as "exe.pdf".
+        assertEquals("Factura_fdp.exe.pdf", pdfFileName("Factura\u202Efdp.exe"))
+    }
+
+    @Test
     fun `never produces hidden or empty names`() {
         assertEquals("notas.pdf", pdfFileName("...notas"))
         assertEquals("document.pdf", pdfFileName("   "))

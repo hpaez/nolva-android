@@ -27,5 +27,8 @@ class ContentPdfImporterTest {
         assertEquals("PDF importado", ContentPdfImporter.documentTitle(".pdf", "PDF importado"))
         assertEquals("PDF importado", ContentPdfImporter.documentTitle(null, "PDF importado"))
         assertEquals(MAX_TITLE_LENGTH, ContentPdfImporter.documentTitle("x".repeat(300) + ".pdf", "PDF").length)
+        // Names from other apps: no line breaks or direction overrides.
+        assertEquals("Boleta marzo", ContentPdfImporter.documentTitle("Boleta\nmarzo.pdf", "PDF"))
+        assertEquals("Facturafdp.exe", ContentPdfImporter.documentTitle("Factura\u202Efdp.exe.pdf", "PDF"))
     }
 }

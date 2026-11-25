@@ -8,6 +8,8 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import java.io.File
 import java.io.IOException
+import java.io.OutputStream
+import java.io.InputStream
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 
@@ -52,7 +54,7 @@ class ContentPageImporter(
                 is ImportPlan.Copy -> {
                     val input = contentResolver.openInputStream(uri)
                         ?: throw DocumentException.NotFound("cannot open $uri")
-                    input.use { source -> temp.outputStream().use { source.copyTo(it) } }
+                    input.use { source -> temp.outputStream().use { copyAtMost(source, it, MAX_IMPORT_BYTES) } }
                 }
                 ImportPlan.ConvertToJpeg ->
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -113,6 +115,28 @@ class ContentPageImporter(
     internal companion object {
         /** High enough that text stays crisp; HEIC photos are already lossy. */
         const val JPEG_QUALITY = 92
+
+        /**
+         * Largest image accepted: far above any phone photo (a 200 MP JPEG is
+         * about 60 MB), it keeps a huge or endless file from filling storage.
+         */
+        const val MAX_IMPORT_BYTES = 100L * 1024 * 1024
+
+        /**
+         * Copies [input] to [output], failing once more than [limit] bytes
+         * have come: the size a provider reports can't be trusted.
+         */
+        fun copyAtMost(input: InputStream, output: OutputStream, limit: Long) {
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            var total = 0L
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) return
+                total += read
+                if (total > limit) throw DocumentException.InvalidInput("image larger than ${limit / (1024 * 1024)} MB")
+                output.write(buffer, 0, read)
+            }
+        }
 
         /** @return how to import [mimeType] on API [sdkInt], or `null` if it can't be. */
         fun importPlanFor(mimeType: String?, sdkInt: Int): ImportPlan? = when (val ext = extensionFor(mimeType)) {
