@@ -201,4 +201,12 @@
     <string name="error_share_page">Couldn\'t share the page.</string>
     <string name="error_apply_filter">Couldn\'t apply the filter.</string>
     <string name="error_unsupported_image">That image format isn\'t supported.</string>
+    <!-- Page editing in the viewer -->
+    <string name="rotate_left">Rotate left</string>
+    <string name="rotate_right">Rotate right</string>
+    <string name="redo">Redo</string>
+    <string name="apply_filter_to_all">Apply to all</string>
+    <string name="applying_to_pages">Applying… %1$d of %2$d</string>
+    <string name="error_rotate_page">Couldn\'t rotate the page.</string>
+    <string name="error_restore_page">Couldn\'t restore the page. Try again.</string>
 </resources>

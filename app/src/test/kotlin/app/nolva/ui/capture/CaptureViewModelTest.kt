@@ -10,6 +10,7 @@ import app.nolva.data.LumaFrame
 import app.nolva.data.Page
 import app.nolva.data.PageCropper
 import app.nolva.data.PageFilter
+import app.nolva.data.PageRendering
 import app.nolva.data.SheetDetector
 import java.io.File
 import java.time.Instant
@@ -76,6 +77,8 @@ class CaptureViewModelTest {
         }
 
         override suspend fun applyFilter(pageId: String, filter: PageFilter): Page = error("unused")
+        override suspend fun rotatePage(pageId: String, clockwise: Boolean): Page = error("unused")
+        override suspend fun setRendering(pageId: String, rendering: PageRendering): Page = error("unused")
     }
 
     /** Deletes pages, or fails with [failure]. */

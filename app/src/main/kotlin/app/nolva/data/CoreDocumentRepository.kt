@@ -155,6 +155,19 @@ class CoreDocumentRepository(
         core.setPageFilter(pageId, filter.toCore()).toPage()
     }.also { onPageImagesChanged() }
 
+    override suspend fun rotatePage(pageId: String, clockwise: Boolean): Page = call {
+        core.rotatePage(pageId, clockwise).toPage()
+    }.also { onPageImagesChanged() }
+
+    override suspend fun setRendering(pageId: String, rendering: PageRendering): Page = call {
+        core.setPageRendering(
+            pageId,
+            rendering.corners?.toPageCorners(),
+            rendering.filter.toCore(),
+            rendering.rotationDegrees.coerceAtLeast(0).toUInt(),
+        ).toPage()
+    }.also { onPageImagesChanged() }
+
     override suspend fun pagesNeedingText(limit: Int): List<Page> = call {
         core.pagesNeedingText(limit.coerceAtLeast(0).toUInt()).map { it.toPage() }
     }
@@ -209,6 +222,7 @@ private fun PageInfo.toPage() = Page(
     processedFile = processedPath?.let(::File),
     corners = corners?.toCorners(),
     filter = filter.toPageFilter(),
+    rotationDegrees = rotationDegrees.toInt(),
 )
 
 private fun PageFilter.toCore() = when (this) {

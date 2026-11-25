@@ -7,6 +7,7 @@ import app.nolva.data.NormalizedPoint
 import app.nolva.data.Page
 import app.nolva.data.PageCropper
 import app.nolva.data.PageFilter
+import app.nolva.data.PageRendering
 import java.io.File
 import java.time.Instant
 import kotlinx.coroutines.Dispatchers
@@ -60,6 +61,8 @@ class CropViewModelTest {
         }
 
         override suspend fun applyFilter(pageId: String, filter: PageFilter): Page = error("unused")
+        override suspend fun rotatePage(pageId: String, clockwise: Boolean): Page = error("unused")
+        override suspend fun setRendering(pageId: String, rendering: PageRendering): Page = error("unused")
     }
 
     @Test

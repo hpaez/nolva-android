@@ -47,10 +47,22 @@ data class Page(
     val corners: Corners? = null,
     /** Filter applied on top of the crop. */
     val filter: PageFilter = PageFilter.Original,
+    /** Clockwise quarter turns applied after the crop: 0, 90, 180 or 270. */
+    val rotationDegrees: Int = 0,
 ) {
     /** What to show the user: the processed image when there is one. */
     val displayFile: File get() = processedFile ?: originalFile
+
+    /** How the page is rendered from its original, e.g. to undo an edit. */
+    val rendering: PageRendering get() = PageRendering(corners, filter, rotationDegrees)
 }
+
+/** Everything that decides how a page looks; the original is never changed. */
+data class PageRendering(
+    val corners: Corners? = null,
+    val filter: PageFilter = PageFilter.Original,
+    val rotationDegrees: Int = 0,
+)
 
 /** Look applied to a page on top of its crop; always rendered from the original. */
 enum class PageFilter {

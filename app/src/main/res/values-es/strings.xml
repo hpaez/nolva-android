@@ -193,4 +193,12 @@
     <string name="no_text_found">No se encontró texto en esta página.</string>
     <string name="text_pending">Todavía se está leyendo el texto de esta página. Prueba en un momento.</string>
     <string name="error_load_text">No se pudo cargar el texto de la página.</string>
+    <!-- Edición de páginas en el visor -->
+    <string name="rotate_left">Girar a la izquierda</string>
+    <string name="rotate_right">Girar a la derecha</string>
+    <string name="redo">Rehacer</string>
+    <string name="apply_filter_to_all">Aplicar a todas</string>
+    <string name="applying_to_pages">Aplicando… %1$d de %2$d</string>
+    <string name="error_rotate_page">No se pudo girar la página.</string>
+    <string name="error_restore_page">No se pudo restaurar la página. Inténtalo de nuevo.</string>
 </resources>
