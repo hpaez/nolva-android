@@ -1,6 +1,8 @@
 package app.nolva.ui.document
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PdfPasswordDialogTest {
@@ -15,5 +17,15 @@ class PdfPasswordDialogTest {
         assertEquals(null, passwordProblem(ascii, ascii))
         val accented = "ñ".repeat(64)
         assertEquals(PasswordProblem.TooLong, passwordProblem(accented, accented))
+    }
+
+    @Test
+    fun `short passwords are only warned about`() {
+        assertTrue(isWeakPassword("1234"))
+        assertTrue(isWeakPassword("ñandú12")) // 7 characters, though more bytes
+        assertFalse(isWeakPassword("ñandú123"))
+        assertFalse("nothing typed yet", isWeakPassword(""))
+        // A weak password is still a valid one.
+        assertEquals(null, passwordProblem("1234", "1234"))
     }
 }

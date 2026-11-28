@@ -257,4 +257,5 @@
     <string name="error_signature">Couldn\'t save the signature.</string>
     <string name="error_too_many_signatures">You have 10 saved signatures. Forget one to save another.</string>
     <string name="open_document">Open</string>
+    <string name="pdf_password_weak">Short password: anyone with the file could guess it. Use %1$d characters or more.</string>
 </resources>

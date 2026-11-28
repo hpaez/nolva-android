@@ -32,6 +32,17 @@ import app.nolva.data.PaperSize
 /** Why a password can't be used yet. */
 internal enum class PasswordProblem { Empty, TooLong, Mismatch }
 
+/**
+ * Shorter passwords are warned about, not refused: AES-256 can't protect
+ * "1234" from someone who has the file and tries every combination, but the
+ * choice stays with the user.
+ */
+internal const val MIN_RECOMMENDED_PASSWORD_LENGTH = 8
+
+/** Whether [password] is set but short enough to be guessed by brute force. */
+internal fun isWeakPassword(password: String): Boolean =
+    password.isNotEmpty() && password.codePointCount(0, password.length) < MIN_RECOMMENDED_PASSWORD_LENGTH
+
 internal fun passwordProblem(password: String, confirmation: String): PasswordProblem? = when {
     password.isEmpty() -> PasswordProblem.Empty
     password.toByteArray(Charsets.UTF_8).size > MAX_PDF_PASSWORD_BYTES -> PasswordProblem.TooLong
@@ -86,10 +97,20 @@ internal fun PdfPasswordDialog(
                         }
                     },
                     isError = passwordError != null,
-                    supportingText = if (passwordError != null) {
-                        { Text(stringResource(passwordError)) }
-                    } else {
-                        null
+                    supportingText = when {
+                        passwordError != null -> {
+                            { Text(stringResource(passwordError)) }
+                        }
+                        // A warning while typing, not an error: export still works.
+                        isWeakPassword(password) -> {
+                            {
+                                Text(
+                                    stringResource(R.string.pdf_password_weak, MIN_RECOMMENDED_PASSWORD_LENGTH),
+                                    color = MaterialTheme.colorScheme.tertiary,
+                                )
+                            }
+                        }
+                        else -> null
                     },
                 )
                 OutlinedTextField(

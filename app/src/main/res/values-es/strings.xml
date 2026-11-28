@@ -249,4 +249,5 @@
     <string name="error_signature">No se pudo guardar la firma.</string>
     <string name="error_too_many_signatures">Ya tienes 10 firmas guardadas. Olvida una para guardar otra.</string>
     <string name="open_document">Abrir</string>
+    <string name="pdf_password_weak">Contraseña corta: cualquiera con el archivo podría adivinarla. Usa %1$d caracteres o más.</string>
 </resources>
